@@ -1,0 +1,120 @@
+// Modelo lógico del MVP de TiendApp (SRS §9), limitado a los 15 SWR seleccionados.
+// Montos en COP enteros (D-04). Cantidades con hasta 3 decimales (AJ-03).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  SELLER
+}
+
+enum Unit {
+  UNIT
+  KG
+  LB
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+enum MovementType {
+  INITIAL
+  ENTRY
+  SALE
+}
+
+/// SWR-AUTH-001, SWR-AUTH-005
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  sales     Sale[]
+  movements InventoryMovement[]
+}
+
+/// SWR-CAT-001 (nombre único, AJ-06)
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+/// SWR-PROD-001, SWR-PROD-005
+model Product {
+  id         String   @id @default(uuid())
+  name       String
+  categoryId String
+  unit       Unit
+  cost       Int
+  price      Int
+  stock      Decimal  @db.Decimal(12, 3)
+  minStock   Decimal  @db.Decimal(12, 3)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  category  Category            @relation(fields: [categoryId], references: [id])
+  saleItems SaleItem[]
+  movements InventoryMovement[]
+}
+
+/// Stock inicial y descuentos por venta (D-05, SWR-SALE-008)
+model InventoryMovement {
+  id        String       @id @default(uuid())
+  productId String
+  type      MovementType
+  quantity  Decimal      @db.Decimal(12, 3)
+  userId    String
+  saleId    String?
+  createdAt DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  sale    Sale?   @relation(fields: [saleId], references: [id])
+}
+
+/// SWR-SALE-004, SWR-SALE-010 (idempotencyKey único), SWR-PAY-001
+model Sale {
+  id             String        @id @default(uuid())
+  userId         String
+  paymentMethod  PaymentMethod
+  total          Int
+  idempotencyKey String        @unique
+  createdAt      DateTime      @default(now())
+
+  user      User                @relation(fields: [userId], references: [id])
+  items     SaleItem[]
+  movements InventoryMovement[]
+}
+
+/// SWR-SALE-003, SWR-SALE-005 (precio aplicado), SWR-MED-002
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String
+  productId String
+  quantity  Decimal @db.Decimal(12, 3)
+  unit      Unit
+  unitPrice Int
+  subtotal  Int
+
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+}
