@@ -1,0 +1,1067 @@
+{
+  "info": {
+    "name": "TiendApp API",
+    "description": "Pruebas de API de TiendApp (guía §12). Organizadas por módulo; la mayoría verifica reglas del dominio, no solo CRUD. Ejecutar en orden: cada carpeta usa variables de la anterior.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Autenticación",
+      "item": [
+        {
+          "name": "API-01 Login administrador válido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 y token JWT', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().accessToken).to.match(/^[\\w-]+\\.[\\w-]+\\.[\\w-]+$/); });",
+                  "pm.test('rol ADMIN y sin hash de contraseña', () => { const u = pm.response.json().user; pm.expect(u.role).to.eql('ADMIN'); pm.expect(u).to.not.have.property('passwordHash'); });",
+                  "pm.collectionVariables.set('adminToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "SWR-AUTH-001. Guarda el token para las demás solicitudes.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-02 Login con contraseña incorrecta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('mensaje general', () => pm.expect(pm.response.json().message).to.eql('Correo o contraseña incorrectos'));",
+                  "pm.test('no entrega token', () => pm.expect(pm.response.json()).to.not.have.property('accessToken'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "SWR-AUTH-002: mensaje general que no revela si el correo existe.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"contraseña-incorrecta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-03 Login vendedor válido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 y rol SELLER', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().user.role).to.eql('SELLER'); });",
+                  "pm.collectionVariables.set('sellerToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{sellerEmail}}\",\n  \"password\": \"{{sellerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-04 Ruta protegida sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 sin sesión', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Guía §5: acceso a ruta protegida sin sesión.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Catálogo",
+      "item": [
+        {
+          "name": "API-05 Crear categoría",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('suffix', Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('categoryId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "SWR-CAT-001. El sufijo único evita depender de ejecuciones anteriores.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman {{suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-06 Categoría duplicada sin distinguir mayúsculas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 conflicto', () => pm.response.to.have.status(409));",
+                  "pm.test('mensaje identifica la categoría existente', () => pm.expect(pm.response.json().message).to.include('Postman'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Regla AJ-06 derivada de SWR-CAT-001.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"POSTMAN {{suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-07 Vendedor no puede crear categorías",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 prohibido', () => pm.response.to.have.status(403));",
+                  "pm.test('mensaje de permisos', () => pm.expect(pm.response.json().message).to.match(/permisos/i));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "SWR-AUTH-004 / TC-SEC-001: validación del rol en el servidor.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sellerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"No permitida {{suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-08 Registrar producto por unidad con stock 10",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 con stock inicial 10', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().stock).to.eql(10); });",
+                  "pm.collectionVariables.set('unitProductId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "SWR-PROD-001. Prepara TC-SALE-001.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Arroz {{suffix}}\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"unit\": \"UNIT\",\n  \"cost\": 1800,\n  \"price\": 2500,\n  \"initialStock\": 10,\n  \"minStock\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-09 Registrar producto por kg con stock 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('kgProductId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Queso {{suffix}}\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"unit\": \"KG\",\n  \"cost\": 9000,\n  \"price\": 12000,\n  \"initialStock\": 2,\n  \"minStock\": 0.5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-10 Producto con campos obligatorios faltantes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('identifica campos', () => { const m = pm.response.json().message.join(' '); pm.expect(m).to.include('nombre'); pm.expect(m).to.include('categoría'); pm.expect(m).to.include('precio'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "SWR-PROD-001: el sistema identifica los campos que faltan.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"unit\": \"UNIT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Ventas",
+      "item": [
+        {
+          "name": "API-11 Venta de 3 unidades descuenta inventario",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('saleKey', require('uuid').v4());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('201 venta nueva', () => { pm.response.to.have.status(201); pm.expect(b.replayed).to.eql(false); });",
+                  "pm.test('subtotal y total 3 × 2500 = 7500', () => { pm.expect(b.sale.items[0].subtotal).to.eql(7500); pm.expect(b.sale.total).to.eql(7500); });",
+                  "pm.test('precio aplicado y medio de pago', () => { pm.expect(b.sale.items[0].unitPrice).to.eql(2500); pm.expect(b.sale.paymentMethod).to.eql('CASH'); });",
+                  "pm.collectionVariables.set('saleId', b.sale.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "TC-SALE-001 / SWR-SALE-003/004/008 / SWR-PAY-001.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sellerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{saleKey}}\",\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": \"{{unitProductId}}\",\n      \"quantity\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-12 Stock final es 7",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('stock 7', () => { const p = pm.response.json().find(x => x.id === pm.collectionVariables.get('unitProductId')); pm.expect(p.stock).to.eql(7); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "TC-SALE-001: saldo previo 10 menos 3 vendidas.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "API-13 Repetir la misma solicitud no duplica la venta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('devuelve la venta existente', () => { pm.expect(b.replayed).to.eql(true); pm.expect(b.sale.id).to.eql(pm.collectionVariables.get('saleId')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "TC-REL-001 / SWR-SALE-010: misma clave de idempotencia.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sellerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{saleKey}}\",\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": \"{{unitProductId}}\",\n      \"quantity\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-14 Stock sigue en 7 tras la repetición",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('sin doble descuento', () => { const p = pm.response.json().find(x => x.id === pm.collectionVariables.get('unitProductId')); pm.expect(p.stock).to.eql(7); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            }
+          }
+        },
+        {
+          "name": "API-15 Venta con stock insuficiente",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('saleKey2', require('uuid').v4());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "pm.test('mensaje con disponible y solicitado', () => pm.expect(pm.response.json().message[0]).to.match(/Stock insuficiente .*disponible 2, solicitado 3/));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "TC-SALE-002 / SWR-SALE-007: stock 2 kg, se piden 3 kg.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sellerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{saleKey2}}\",\n  \"paymentMethod\": \"CARD\",\n  \"items\": [\n    {\n      \"productId\": \"{{kgProductId}}\",\n      \"quantity\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-16 Venta de 0,75 kg",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('saleKey3', require('uuid').v4());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const i = pm.response.json().sale.items[0];",
+                  "pm.test('cantidad decimal con unidad kg', () => { pm.response.to.have.status(201); pm.expect(i.quantity).to.eql(0.75); pm.expect(i.unit).to.eql('KG'); });",
+                  "pm.test('subtotal 0,75 × 12000 = 9000', () => pm.expect(i.subtotal).to.eql(9000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "TC-MED-001 / SWR-MED-002.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sellerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{saleKey3}}\",\n  \"paymentMethod\": \"TRANSFER\",\n  \"items\": [\n    {\n      \"productId\": \"{{kgProductId}}\",\n      \"quantity\": 0.75\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-17 Cantidad decimal en producto por unidad",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('saleKey4', require('uuid').v4());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('explica la regla', () => pm.expect(pm.response.json().message[0]).to.include('solo admiten cantidades enteras'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sellerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{saleKey4}}\",\n  \"paymentMethod\": \"CASH\",\n  \"items\": [\n    {\n      \"productId\": \"{{unitProductId}}\",\n      \"quantity\": 1.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-18 Cambiar precio del producto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 precio 3000', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().price).to.eql(3000); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Prepara TC-DATA-001.",
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{unitProductId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{unitProductId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 3000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "API-19 Venta histórica conserva el precio aplicado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const s = pm.response.json();",
+                  "pm.test('precio aplicado 2500 y total 7500', () => { pm.expect(s.items[0].unitPrice).to.eql(2500); pm.expect(s.total).to.eql(7500); });",
+                  "pm.test('venta asociada al vendedor', () => pm.expect(s.user.name).to.eql('Vendedor'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "TC-DATA-001 / SWR-SALE-005.",
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/sales/{{saleId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales",
+                "{{saleId}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "sellerToken",
+      "value": ""
+    },
+    {
+      "key": "suffix",
+      "value": ""
+    },
+    {
+      "key": "categoryId",
+      "value": ""
+    },
+    {
+      "key": "unitProductId",
+      "value": ""
+    },
+    {
+      "key": "kgProductId",
+      "value": ""
+    },
+    {
+      "key": "saleKey",
+      "value": ""
+    },
+    {
+      "key": "saleKey2",
+      "value": ""
+    },
+    {
+      "key": "saleKey3",
+      "value": ""
+    },
+    {
+      "key": "saleKey4",
+      "value": ""
+    },
+    {
+      "key": "saleId",
+      "value": ""
+    }
+  ]
+}
