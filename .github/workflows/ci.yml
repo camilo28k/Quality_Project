@@ -1,0 +1,81 @@
+# Integración continua de TiendApp (guía §19) con Quality Gate propio (D-08).
+# Corre sin base de datos ni secretos: lint, tipos, build y pruebas unitarias/RTL con
+# umbrales de cobertura. Las pruebas Postman y Playwright necesitan la BD y se ejecutan
+# en el ambiente de prueba (docs/calidad/09_Postman y 10_Playwright).
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, qa, main]
+  push:
+    branches: [develop, qa, main, 'feature/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (NestJS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # Valores ficticios: prisma generate no se conecta a la BD.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Lint (sin advertencias)
+        run: npm run lint:ci
+      - name: Build
+        run: npm run build
+      - name: Pruebas unitarias + Quality Gate de cobertura
+        run: npx jest --coverage --coverageReporters=text-summary --coverageReporters=lcov
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cobertura-backend
+          path: backend/coverage/
+          retention-days: 14
+
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint (sin advertencias)
+        run: npm run lint:ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Pruebas RTL + Quality Gate de cobertura
+        run: npx vitest run --coverage --coverage.reporter=text-summary --coverage.reporter=lcov
+      - name: Build
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cobertura-frontend
+          path: frontend/coverage/
+          retention-days: 14
