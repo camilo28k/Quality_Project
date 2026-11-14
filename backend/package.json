@@ -21,7 +21,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
-    "test:api": "node scripts/run-postman.mjs"
+    "test:api": "node scripts/run-postman.mjs",
+    "lint:ci": "eslint \"{src,test}/**/*.ts\" --max-warnings=0"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -80,10 +81,38 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.ts",
+      "!**/*.spec.ts",
+      "!main.ts",
+      "!**/*.module.ts",
+      "!**/*.dto.ts"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "./src/sales/sale-rules.ts": {
+        "lines": 95,
+        "branches": 95,
+        "functions": 95,
+        "statements": 95
+      },
+      "./src/sales/sales.service.ts": {
+        "lines": 80,
+        "branches": 75
+      },
+      "./src/catalog/catalog.service.ts": {
+        "lines": 80,
+        "branches": 75
+      },
+      "./src/auth/auth.service.ts": {
+        "lines": 80,
+        "branches": 75
+      },
+      "./src/auth/password.util.ts": {
+        "lines": 80,
+        "branches": 75
+      }
+    }
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
