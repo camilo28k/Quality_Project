@@ -1,0 +1,1 @@
+{"timestamp":"2026-11-14T14:05:55.991-05:00","level":"ERROR","context":"Bootstrap","event":"APP_START_FAILED","message":"La aplicación no pudo iniciar","metadata":{"error":"PrismaClientInitializationError","reason":"Can't reach database server at `127.0.0.1:5999`"}}
