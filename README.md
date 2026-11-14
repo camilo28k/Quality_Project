@@ -24,4 +24,3 @@ Flujo principal: autenticarse → registrar categoría y producto → registrar 
 | Usuarios/Auth | SWR-AUTH-001, SWR-AUTH-002, SWR-AUTH-004, SWR-AUTH-005 |
 | Productos/Categorías | SWR-PROD-001, SWR-PROD-005, SWR-CAT-001 |
 | Ventas | SWR-SALE-003, SWR-SALE-004, SWR-SALE-005, SWR-SALE-007, SWR-SALE-008, SWR-SALE-010, SWR-MED-002, SWR-PAY-001 |
-"# Quality_Project" 
