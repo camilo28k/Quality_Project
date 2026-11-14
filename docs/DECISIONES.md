@@ -9,7 +9,7 @@
 | D-05 | El stock inicial se registra como movimiento de inventario. | Vacío en SRS | Propuesta |
 | D-06 | El primer administrador se crea con un script de seed; credenciales en `.env`, no en el repositorio. | Vacío en SRS | Propuesta |
 | D-07 | Lotes y vencimientos (SWR-EXP-*) fuera del MVP. C-04 queda abierta. | Selección de alcance | Aprobada |
-| D-08 | Quality Gate propio en GitHub Actions: lint + pruebas + umbral de cobertura, sin Sonar (guía §14 no lo exige). | Guía §14 y §26 | Propuesta |
+| D-08 | Quality Gate propio en GitHub Actions: lint sin advertencias, tipos, build, pruebas y umbrales de cobertura por archivo; sin Sonar (guía §14 no lo exige). Detalle en `docs/calidad/CI_Quality_Gate.md`. | Guía §14 y §26 | Implementada |
 | D-09 | Trazabilidad SWR→SYS tomada de la columna «Fuente» de cada SWR; el Anexo A de la SRS presenta filas desalineadas y se documentará el ajuste. | Revisión de la SRS | Propuesta |
 | D-10 | Plantilla de dashboard: next-shadcn-dashboard-starter (Kiranism, GitHub). Falta guardar URL exacta y captura original en `docs/marca/`. | Guía §4 | Aprobada |
 | D-11 | Base de datos: PostgreSQL en Supabase, accedida solo desde el backend vía Prisma. | Guía §6 | Aprobada |

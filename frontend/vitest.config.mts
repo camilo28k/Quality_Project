@@ -15,7 +15,15 @@ export default defineConfig({
     css: false,
     coverage: {
       include: ['src/features/**', 'src/lib/**'],
-      exclude: ['**/*.test.*']
+      exclude: ['**/*.test.*', 'src/lib/session*.ts', 'src/lib/theme-transition.ts'],
+      // Quality Gate (D-08): piso global y umbral para la lógica del flujo de venta.
+      thresholds: {
+        lines: 65,
+        branches: 55,
+        'src/features/sales/sale-math.ts': { lines: 95, branches: 75 },
+        'src/features/sales/new-sale.tsx': { lines: 80, branches: 75 },
+        'src/features/auth/login-form.tsx': { lines: 80, branches: 75 }
+      }
     }
   }
 });
