@@ -4,7 +4,7 @@
 CORHUILA · Ingeniería de Sistemas · 2026
 Integrantes: Melanie Liset Sánchez Polanía; Harold Camilo Barrera Giraldo
 Repositorio: https://github.com/camilo28k/Quality_Project
-Fecha de corte de la evidencia: 14 de noviembre de 2026
+Fecha de corte de la evidencia: 16 de noviembre de 2026
 
 > **Borrador.** Las secciones marcadas como *pendiente del equipo* deben completarse antes de entregar: ejecución de caja negra, validación con el stakeholder y docente o fecha de entrega.
 
@@ -14,18 +14,18 @@ Fecha de corte de la evidencia: 14 de noviembre de 2026
 
 TiendApp es una plataforma web de inventario y ventas para un solo establecimiento. Se construyó un MVP con **3 módulos** (Usuarios/Autenticación, Productos/Categorías y Ventas) que cubre el flujo principal **autenticarse → registrar categoría y producto → registrar venta → descontar inventario**. El MVP implementa **15 requisitos de software** de la SRS, todos trazados hasta su requisito de negocio.
 
-**Resultado de la verificación automatizada (14/11/2026):** 90 pruebas automatizadas, **90 en PASS**.
+**Resultado de la verificación automatizada (14–16/11/2026):** 96 pruebas automatizadas, **96 en PASS**.
 
 | Suite | Pruebas |
 |---|---|
-| Unitarias (Jest), incluye 3 bloques de caja blanca | 51 |
+| Unitarias (Jest), incluye 3 bloques de caja blanca | 57 |
 | Frontend (Vitest + React Testing Library) | 13 |
 | API (Postman/Newman, 31 assertions) | 19 |
 | E2E (Playwright) | 7 |
 
 Además, el CI en GitHub Actions corre lint, tipos, build, pruebas y umbrales de cobertura en cada push.
 
-**Decisión de liberación (sección 8): no liberar todavía.** El flujo funciona y es consistente, pero hay dos hallazgos abiertos de severidad alta:
+**Estado de la versión (sección 8):** el 15/11/2026 el equipo integró todo en `main`, siguiendo el flujo `develop` → `qa` → `main` con CI en verde. Como versión de **producción** la recomendación sigue siendo **no liberar todavía**, por dos hallazgos abiertos de severidad alta:
 - **FAL-01:** confirmar una venta tarda de 2,6 a 5,1 s, frente al objetivo de 2 s (SWR-PERF-001).
 - **INC-03:** la contraseña de la base de datos quedó expuesta fuera del equipo.
 
@@ -86,9 +86,9 @@ Las decisiones están registradas en `docs/DECISIONES.md` (D-01 a D-14). La iden
 | Tipo (guía) | Mínimo | Realizado | Resultado | Evidencia |
 |---|---|---|---|---|
 | Caja negra en navegador | 10 | 12 casos diseñados | **Pendiente de ejecución del equipo** | `05_Caja_Negra_Navegador/Casos_Caja_Negra.xlsx` |
-| Unitarias | 8 | 51 | 51 PASS | `04_Matriz_Pruebas.xlsx` |
+| Unitarias | 8 | 57 | 57 PASS | `04_Matriz_Pruebas.xlsx` |
 | Caja blanca | 3 bloques | 3 bloques (`validateQuantity`, `SalesService.confirm`, `canAccess`) | PASS | `07_Caja_Blanca/ANALISIS_CAJA_BLANCA.md` |
-| Frontend RTL | 12 | 13 | 13 PASS | `frontend/src/features/**/*.test.tsx` |
+| Frontend RTL | 12 (3 explicadas) | 13 | 13 PASS | `08_RTL/EXPLICACION_RTL.md` |
 | API Postman | 8 (½ de dominio) | 19 (11 de dominio), 31 assertions | 19 PASS | `09_Postman/` |
 | E2E Playwright | 5 (2 de flujo completo) | 7 (2 de flujo completo) | 7 PASS | `10_Playwright/` |
 
@@ -111,13 +111,13 @@ Las decisiones están registradas en `docs/DECISIONES.md` (D-01 a D-14). La iden
 
 ## 6. Hallazgos
 
-12 hallazgos reales registrados: **8 cerrados con re-test y 4 abiertos**.
+12 hallazgos reales registrados: **9 cerrados con re-test y 3 abiertos**.
 
 | ID | Clasificación | Hallazgo | Severidad | Estado |
 |---|---|---|---|---|
 | FAL-01 | Falla | Confirmar venta tarda 2,6–5,1 s (objetivo 2 s, SWR-PERF-001) | Alta | **Abierto** |
 | INC-03 | Error → Incidente | La contraseña de la BD se compartió fuera del equipo | Alta | **Abierto** |
-| MEJ-01 | Defecto menor | El rechazo de un token alterado no queda en los logs | Baja | Abierto |
+| MEJ-01 | Defecto menor | El rechazo de un token alterado no quedaba en los logs; ahora se registra `AUTH_TOKEN_INVALID` | Baja | Cerrado |
 | DEF-04 | Error → Defecto | El reporte HTML de Playwright y los resultados de Newman contenían la contraseña de prueba | Alta | Cerrado |
 | DEF-01 | Error → Defecto → Falla | El build no generaba `dist/main`; la API no arrancaba | Alta | Cerrado |
 | DEF-05 | Defecto | Sin log estructurado cuando la BD no está disponible al arrancar | Media | Cerrado |
@@ -144,18 +144,18 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 
 ## 8. Decisión de liberación
 
-**Recomendación: NO liberar a `main` todavía.**
+**Estado:** el 15/11/2026 el equipo integró todo en `main` (PR #28, CI en verde). `main` es la **versión de entrega académica** y contiene exactamente lo que se probó en `qa`. La recomendación como **versión de producción** sigue siendo **no liberar todavía** hasta cumplir las condiciones de esta sección. El equipo decidió posponer la rotación de la contraseña de la BD (INC-03).
 
 **Lo que respalda la calidad del MVP:**
 - El flujo principal funciona de punta a punta en el navegador y en las 4 suites automatizadas.
 - No hay defectos abiertos de los que la SRS §13.3 declara bloqueantes: no hay acceso no autorizado (TC-SEC-001, E2E-03, API-07), pérdida de consistencia de inventario (transacción y descuento condicional, TC-SALE-001/002) ni duplicación de ventas (TC-REL-001, prueba con tres envíos simultáneos).
 
-**Lo que impide liberar:**
+**Lo que impide liberar a producción:**
 1. **FAL-01:** el requisito de desempeño SWR-PERF-001 no se cumple en ninguna medición.
 2. **INC-03:** con la contraseña de la BD expuesta no puede publicarse un ambiente.
 3. **Condiciones de aceptación de la SRS §13.3 incompletas:** faltan la caja negra y la revisión de los flujos por el administrador y un vendedor (archivos 05 y 03).
 
-**Condiciones para liberar:**
+**Condiciones para liberar a producción:**
 - Rotar la contraseña de la BD.
 - Ejecutar y aprobar los 12 casos de caja negra.
 - Validar con el stakeholder.
@@ -167,14 +167,15 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 - **Los logs con `durationMs` mostraron que el rendimiento cambia entre días** (de 2,6 a 4,2 s). Sin ellos el problema se habría percibido solo como «a veces está lenta».
 - **Medir la cobertura reveló lógica sin pruebas unitarias** (DEF-06), aunque las pruebas de API la ejercitaban.
 - **Varias fallas de E2E eran defectos de las propias pruebas** (DEF-07). Los locators semánticos y esperar el estado de la página las hicieron estables.
-- **Shift Right encontró lo que ninguna prueba funcional detectaba:** el arranque sin BD (DEF-05).
+- **Shift Right encontró lo que ninguna prueba funcional detectaba:** el arranque sin BD (DEF-05) y los tokens rechazados sin registro (MEJ-01).
+- **El orden del flujo de ramas importa.** Al principio los PR se encadenaron entre ramas `feature` y no llegaron a `develop`; se corrigió integrando primero en `develop` y luego promoviendo a `qa` con cherry-pick.
 
 ## 10. Pendientes del equipo antes de la entrega
 
 - [ ] Ejecutar los 12 casos de caja negra y registrar resultados y evidencia (`05_Caja_Negra_Navegador/`).
 - [ ] Validar los SWR con el administrador y un vendedor (`03_Validacion_Requisitos.xlsx`).
-- [ ] Rotar la contraseña de la BD en Supabase (INC-03).
-- [ ] Revisar y fusionar los PR #1 a #8 en `develop`; promover a `qa`; proteger `qa` y `main`.
+- [ ] Rotar la contraseña de la BD en Supabase (INC-03) — pospuesto por decisión del equipo.
+- [x] Integrar en `develop` (PR #16–#21), promover a `qa` por partes con cherry-pick (PR #22–#27) y a `main` (PR #28); proteger `qa` y `main`.
 - [ ] Completar el docente y la fecha de entrega en la portada (SRS C-10).
 - [ ] Preparar la sustentación: todos los integrantes deben poder explicar la trazabilidad, una prueba unitaria, un análisis de caja blanca, 3 pruebas RTL, una API de Postman, 2 pruebas E2E, un hallazgo con su característica ISO 25010 y los logs.
 
@@ -184,7 +185,7 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 |---|---|---|
 | 1 | SRS + alcance + trazabilidad 29148 | `docs/srs/`, `docs/calidad/01_Alcance_y_Trazabilidad.xlsx` |
 | 2 | MVP + identidad visual | `frontend/`, `backend/`, `docs/marca/FICHA_MARCA.md` |
-| 3 | Repositorio y control de cambios | GitHub, ramas `feature/etapa-*`, PR #1–#8, `.github/workflows/ci.yml` |
+| 3 | Repositorio y control de cambios | GitHub; flujo `feature` → `develop` → `qa` → `main` (PR #16–#28); `.github/workflows/ci.yml` |
 | 4 | Dossier de calidad | `docs/calidad/` (01–14, `CI_Quality_Gate.md`) |
 | 5 | Matriz maestra | `docs/calidad/Matriz_Maestra_Trazabilidad.xlsx` |
 | 7 | Informe final | este documento (`docs/Informe_Final.pdf`) |
