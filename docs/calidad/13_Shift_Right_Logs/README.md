@@ -9,7 +9,7 @@ Formato: una línea JSON por evento con `timestamp` (-05:00), `level`, `context`
 | Inicio de la aplicación | `APP_STARTED` / `APP_START_FAILED` | INFO / ERROR |
 | Inicio de sesión correcto y fallido (sin contraseñas) | `AUTH_LOGIN_SUCCESS` / `AUTH_LOGIN_FAILED` (con `reason`) | INFO / WARN |
 | Operación crítica del flujo principal | `SALE_CONFIRMED`, `SALE_REPLAYED`, `PRODUCT_CREATED`, `CATEGORY_CREATED`, `PRODUCT_DEACTIVATED` | INFO |
-| Validación rechazada | `VALIDATION_REJECTED`, `SALE_REJECTED_STOCK`, `AUTHZ_DENIED` | WARN |
+| Validación rechazada | `VALIDATION_REJECTED`, `SALE_REJECTED_STOCK`, `AUTHZ_DENIED`, `AUTH_TOKEN_INVALID` | WARN |
 | Excepción / error | `UNHANDLED_EXCEPTION` (filtro global), `APP_START_FAILED` | ERROR |
 | Duración de una operación relevante | `durationMs` en login y en confirmación de venta | — |
 
@@ -33,7 +33,7 @@ Tiempos observados por el cliente: login 1,2–1,4 s; crear categoría o product
 | ID | Hallazgo | ISO 25010 | Estado |
 |---|---|---|---|
 | H-SR-01 | Con la BD inalcanzable, el backend terminaba con un stack de Prisma sin formato, sin evento estructurado: imposible de filtrar en un monitor. | Fiabilidad, mantenibilidad (analizabilidad) | **Corregido:** `main.ts` registra `ERROR APP_START_FAILED` con tipo y motivo del error, sin credenciales. Re-test PASS (`2026-11-14_arranque_sin_bd.jsonl`) |
-| H-SR-02 | Un token inválido o vencido se rechaza (401) pero no queda registrado: un intento de acceso con tokens manipulados pasaría inadvertido. | Seguridad (responsabilidad) | Abierto. Mejora: registrar `AUTH_TOKEN_INVALID` (WARN) en `JwtAuthGuard` |
+| H-SR-02 | Un token inválido o vencido se rechazaba (401) sin quedar registrado: un intento de acceso con tokens manipulados pasaba inadvertido. | Seguridad (responsabilidad) | **Corregido (MEJ-01, 2026-11-16):** `JwtAuthGuard` registra `WARN AUTH_TOKEN_INVALID` con el motivo (`TOKEN_MISSING`, `TOKEN_INVALID`, `TOKEN_EXPIRED`) y sin el token. Re-test contra la API real: PASS |
 | H-SR-03 | `durationMs` de la venta subió a 4,1–4,2 s (en la etapa 3 eran 2,6–2,8 s). Las operaciones que no tocan la BD responden en 17 ms. La latencia está en las consultas a Supabase y varía según el momento. | Eficiencia de desempeño | Abierto; confirma H-FE-02 y H-API-02 frente a SWR-PERF-001 (2 s) |
 
 **Conclusiones**
