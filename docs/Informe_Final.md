@@ -14,20 +14,19 @@ Fecha de corte de la evidencia: 16 de noviembre de 2026
 
 TiendApp es una plataforma web de inventario y ventas para un solo establecimiento. Se construyó un MVP con **3 módulos** (Usuarios/Autenticación, Productos/Categorías y Ventas) que cubre el flujo principal **autenticarse → registrar categoría y producto → registrar venta → descontar inventario**. El MVP implementa **15 requisitos de software** de la SRS, todos trazados hasta su requisito de negocio.
 
-**Resultado de la verificación (14–16/11/2026):** 96 pruebas automatizadas, **96 en PASS**, y **12 de 12** casos de caja negra en el navegador en PASS.
+**Resultado de la verificación (14–16/11/2026):** 106 pruebas automatizadas, **106 en PASS**, y **12 de 12** casos de caja negra en el navegador en PASS.
 
 | Suite | Pruebas |
 |---|---|
-| Unitarias (Jest), incluye 3 bloques de caja blanca | 57 |
+| Unitarias (Jest), incluye 3 bloques de caja blanca | 67 |
 | Frontend (Vitest + React Testing Library) | 13 |
 | API (Postman/Newman, 31 assertions) | 19 |
 | E2E (Playwright) | 7 |
 
 Además, el CI en GitHub Actions corre lint, tipos, build, pruebas y umbrales de cobertura en cada push.
 
-**Estado de la versión (sección 8):** el 15/11/2026 el equipo integró todo en `main`, siguiendo el flujo `develop` → `qa` → `main` con CI en verde. Como versión de **producción** la recomendación sigue siendo **no liberar todavía**, por dos hallazgos abiertos de severidad alta:
-- **FAL-01:** confirmar una venta tarda de 2,6 a 5,1 s, frente al objetivo de 2 s (SWR-PERF-001).
-- **INC-03:** la contraseña de la base de datos quedó expuesta fuera del equipo.
+**Estado de la versión (sección 8):** el 15/11/2026 el equipo integró todo en `main`, siguiendo el flujo `develop` → `qa` → `main` con CI en verde. El 16/11/2026 se corrigió **FAL-01**: confirmar una venta pasó de 2,6–5,1 s a un p95 de 1,7 s secuencial y 1,8–2,0 s con 20 usuarios simultáneos (SWR-PERF-001 cumplido). Como versión de **producción** la recomendación sigue siendo **no liberar todavía**, por un hallazgo abierto de severidad alta:
+- **INC-03:** la contraseña de la base de datos quedó expuesta fuera del equipo (rotación pospuesta por el equipo).
 
 Falta, además, la validación con el stakeholder.
 
@@ -86,14 +85,14 @@ Las decisiones están registradas en `docs/DECISIONES.md` (D-01 a D-14). La iden
 | Tipo (guía) | Mínimo | Realizado | Resultado | Evidencia |
 |---|---|---|---|---|
 | Caja negra en navegador | 10 | 12 casos | **12 PASS** (16/11/2026) | `05_Caja_Negra_Navegador/` (XLSX + capturas) |
-| Unitarias | 8 | 57 | 57 PASS | `04_Matriz_Pruebas.xlsx` |
+| Unitarias | 8 | 67 | 67 PASS | `04_Matriz_Pruebas.xlsx` |
 | Caja blanca | 3 bloques | 3 bloques (`validateQuantity`, `SalesService.confirm`, `canAccess`) | PASS | `07_Caja_Blanca/ANALISIS_CAJA_BLANCA.md` |
 | Frontend RTL | 12 (3 explicadas) | 13 | 13 PASS | `08_RTL/EXPLICACION_RTL.md` |
 | API Postman | 8 (½ de dominio) | 19 (11 de dominio), 31 assertions | 19 PASS | `09_Postman/` |
 | E2E Playwright | 5 (2 de flujo completo) | 7 (2 de flujo completo) | 7 PASS | `10_Playwright/` |
 
 **Caja negra (16/11/2026):** los 12 casos se ejecutaron en el navegador contra la versión de `main`, sin mirar el código ni usar Postman, con cuentas de prueba creadas para la sesión (`bb-admin`, `bb-vendedor`). Todos en PASS. Observaciones:
-- Confirmar una venta tardó 3,7 s (FAL-01).
+- Confirmar una venta tardó 3,7 s (FAL-01, corregido después el mismo día).
 - En el formulario de producto, los mensajes de error previos siguen visibles después de corregir el campo hasta volver a guardar (mejora de usabilidad).
 
 **Casos de aceptación de la SRS verificados:**
@@ -115,12 +114,14 @@ Las decisiones están registradas en `docs/DECISIONES.md` (D-01 a D-14). La iden
 
 ## 6. Hallazgos
 
-12 hallazgos reales registrados: **9 cerrados con re-test y 3 abiertos**.
+14 hallazgos reales registrados: **13 cerrados con re-test y 1 abierto**.
 
 | ID | Clasificación | Hallazgo | Severidad | Estado |
 |---|---|---|---|---|
-| FAL-01 | Falla | Confirmar venta tarda 2,6–5,1 s (objetivo 2 s, SWR-PERF-001) | Alta | **Abierto** |
 | INC-03 | Error → Incidente | La contraseña de la BD se compartió fuera del equipo | Alta | **Abierto** |
+| FAL-01 | Falla | Confirmar venta tardaba 2,6–5,1 s (objetivo 2 s). Corregido: 2 idas y vueltas a la BD y caché de sesión; p95 1,7 s secuencial, 60/60 ≤ 2 s con 20 simultáneas | Alta | Cerrado |
+| DEF-08 | Defecto | En la primera versión de la corrección, la guardia de stock no se evaluaba y 3 ventas simultáneas vendieron la última unidad. Detectado por la prueba de carrera antes de integrar | Crítica | Cerrado |
+| DEF-09 | Defecto | 20 ventas simultáneas: 3 *deadlocks* por bloqueo en distinto orden; corregido con bloqueo ordenado | Alta | Cerrado |
 | MEJ-01 | Defecto menor | El rechazo de un token alterado no quedaba en los logs; ahora se registra `AUTH_TOKEN_INVALID` | Baja | Cerrado |
 | DEF-04 | Error → Defecto | El reporte HTML de Playwright y los resultados de Newman contenían la contraseña de prueba | Alta | Cerrado |
 | DEF-01 | Error → Defecto → Falla | El build no generaba `dist/main`; la API no arrancaba | Alta | Cerrado |
@@ -135,11 +136,11 @@ Las decisiones están registradas en `docs/DECISIONES.md` (D-01 a D-14). La iden
 | Característica | Estado | Principal evidencia o riesgo |
 |---|---|---|
 | Adecuación funcional | PARCIAL | 15 SWR con pruebas automatizadas y 12/12 de caja negra en PASS; falta la validación con el stakeholder |
-| Eficiencia de desempeño | **FALLA** | FAL-01; capacidad de 20 usuarios sin prueba de carga |
+| Eficiencia de desempeño | **CUMPLE** | FAL-01 corregido: p95 1,7 s secuencial; 20 simultáneas 60/60 ≤ 2 s. Riesgo residual: muchas ventas del mismo producto a la vez se encolan |
 | Compatibilidad | PARCIAL | Solo Chromium; DEF-03 corregido |
 | Capacidad de interacción | PARCIAL | Mensajes por campo, labels, estados; prueba de usabilidad SWR-USE-001 no evaluada |
 | Fiabilidad | PARCIAL | Transacción, idempotencia, `APP_START_FAILED`; disponibilidad del 99 % no medible sin despliegue |
-| Seguridad | PARCIAL | bcrypt, cookie httpOnly, roles en servidor; INC-03 y MEJ-01 abiertos; HTTPS sin desplegar |
+| Seguridad | PARCIAL | bcrypt, cookie httpOnly, roles en servidor, registro de tokens rechazados (MEJ-01 cerrado); INC-03 abierto; HTTPS sin desplegar; la caché de sesión de FAL-01 permite hasta 30 s de acceso tras desactivar una cuenta |
 | Mantenibilidad | **CUMPLE** | Módulos y reglas puras, 64 pruebas unitarias/RTL, CI con Quality Gate |
 | Flexibilidad | PARCIAL | Configuración por variables de entorno; sin ambiente desplegado |
 | Seguridad operacional | PARCIAL | Confirmación al desactivar, sin borrado, sin stock negativo; no existe anulación de ventas (C-05) |
@@ -155,14 +156,12 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 - No hay defectos abiertos de los que la SRS §13.3 declara bloqueantes: no hay acceso no autorizado (TC-SEC-001, E2E-03, API-07), pérdida de consistencia de inventario (transacción y descuento condicional, TC-SALE-001/002) ni duplicación de ventas (TC-REL-001, prueba con tres envíos simultáneos).
 
 **Lo que impide liberar a producción:**
-1. **FAL-01:** el requisito de desempeño SWR-PERF-001 no se cumple en ninguna medición.
-2. **INC-03:** con la contraseña de la BD expuesta no puede publicarse un ambiente.
-3. **Condiciones de aceptación de la SRS §13.3 incompletas:** falta la revisión de los flujos por el administrador y un vendedor (archivo 03). La caja negra ya se ejecutó: 12/12 PASS.
+1. **INC-03:** con la contraseña de la BD expuesta no puede publicarse un ambiente.
+2. **Condiciones de aceptación de la SRS §13.3 incompletas:** falta la revisión de los flujos por el administrador y un vendedor (archivo 03). La caja negra ya se ejecutó: 12/12 PASS.
 
 **Condiciones para liberar a producción:**
 - Rotar la contraseña de la BD.
 - Validar con el stakeholder.
-- Reducir FAL-01 por debajo de 2 s (agrupar escrituras de la transacción, API y BD en la misma región) o aprobar formalmente una excepción documentada para el MVP.
 
 ## 9. Lecciones aprendidas
 
@@ -171,6 +170,7 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 - **Medir la cobertura reveló lógica sin pruebas unitarias** (DEF-06), aunque las pruebas de API la ejercitaban.
 - **Varias fallas de E2E eran defectos de las propias pruebas** (DEF-07). Los locators semánticos y esperar el estado de la página las hicieron estables.
 - **Shift Right encontró lo que ninguna prueba funcional detectaba:** el arranque sin BD (DEF-05) y los tokens rechazados sin registro (MEJ-01).
+- **Las pruebas con mocks no bastan para código que depende de la BD.** En la corrección de FAL-01, las pruebas unitarias pasaban pero la prueba de carrera contra Supabase mostró que PostgreSQL omitía la guardia de stock (DEF-08) y que había *deadlocks* (DEF-09). Ninguno llegó a `develop`.
 - **El orden del flujo de ramas importa.** Al principio los PR se encadenaron entre ramas `feature` y no llegaron a `develop`; se corrigió integrando primero en `develop` y luego promoviendo a `qa` con cherry-pick.
 
 ## 10. Pendientes del equipo antes de la entrega

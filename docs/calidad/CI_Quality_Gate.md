@@ -33,7 +33,8 @@ SWR-MNT-001 propone **80 %** de cobertura para la lógica de negocio de inventar
 | Archivo | Umbral líneas / ramas | Medido 2026-11-11 |
 |---|---|---|
 | `src/sales/sale-rules.ts` | 95 % / 95 % | 100 % / 100 % |
-| `src/sales/sales.service.ts` | 80 % / 75 % | 93,4 % / 81,6 % |
+| `src/sales/sale-plan.ts` | 95 % / 95 % | 100 % / 100 % (16/11) |
+| `src/sales/sales.service.ts` | 80 % / 75 % | 93,7 % / 78,6 % (16/11; versión de FAL-01) |
 | `src/catalog/catalog.service.ts` | 80 % / 75 % | 97,6 % / 86,4 % |
 | `src/auth/auth.service.ts` | 80 % / 75 % | 95 % / 87 % |
 | `src/auth/password.util.ts` | 80 % / 75 % | 100 % / 100 % |
