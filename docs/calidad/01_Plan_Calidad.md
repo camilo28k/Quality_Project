@@ -1,7 +1,9 @@
 # Plan de Calidad — TiendApp MVP
 
 Calidad de Software · CORHUILA · 2026
-Versión 0.1 (borrador) · Base: SRS TiendApp v1.0 y guía «Del SRS al Release con Evidencia»
+Integrantes: Melanie Liset Sánchez Polanía; Harold Camilo Barrera Giraldo
+Docente: Cesar Augusto Tafur · Fecha de entrega: 16/11/2026
+Versión 1.0 · Base: SRS TiendApp v1.0 y guía «Del SRS al Release con Evidencia»
 
 > Borrador en Markdown. La versión de entrega será `01_Plan_Calidad.pdf`.
 
