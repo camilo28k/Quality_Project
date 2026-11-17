@@ -111,6 +111,12 @@
       "./src/auth/password.util.ts": {
         "lines": 80,
         "branches": 75
+      },
+      "./src/sales/sale-plan.ts": {
+        "lines": 95,
+        "branches": 95,
+        "functions": 95,
+        "statements": 95
       }
     }
   },

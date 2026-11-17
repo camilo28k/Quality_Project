@@ -34,7 +34,7 @@ Tiempos observados por el cliente: login 1,2–1,4 s; crear categoría o product
 |---|---|---|---|
 | H-SR-01 | Con la BD inalcanzable, el backend terminaba con un stack de Prisma sin formato, sin evento estructurado: imposible de filtrar en un monitor. | Fiabilidad, mantenibilidad (analizabilidad) | **Corregido:** `main.ts` registra `ERROR APP_START_FAILED` con tipo y motivo del error, sin credenciales. Re-test PASS (`2026-11-14_arranque_sin_bd.jsonl`) |
 | H-SR-02 | Un token inválido o vencido se rechazaba (401) sin quedar registrado: un intento de acceso con tokens manipulados pasaba inadvertido. | Seguridad (responsabilidad) | **Corregido (MEJ-01, 2026-11-16):** `JwtAuthGuard` registra `WARN AUTH_TOKEN_INVALID` con el motivo (`TOKEN_MISSING`, `TOKEN_INVALID`, `TOKEN_EXPIRED`) y sin el token. Re-test contra la API real: PASS |
-| H-SR-03 | `durationMs` de la venta subió a 4,1–4,2 s (en la etapa 3 eran 2,6–2,8 s). Las operaciones que no tocan la BD responden en 17 ms. La latencia está en las consultas a Supabase y varía según el momento. | Eficiencia de desempeño | Abierto; confirma H-FE-02 y H-API-02 frente a SWR-PERF-001 (2 s) |
+| H-SR-03 | `durationMs` de la venta subió a 4,1–4,2 s (en la etapa 3 eran 2,6–2,8 s). Las operaciones que no tocan la BD responden en 17 ms. La latencia está en las consultas a Supabase y varía según el momento. | Eficiencia de desempeño | **Corregido (FAL-01, 2026-11-16):** venta en 2 idas y vueltas y caché de sesión; secuencial p95 1707 ms y 20 simultáneas 60/60 ≤ 2 s (ver `2026-11-16_fal01_rendimiento.md`) |
 
 **Conclusiones**
 - **Los logs permiten reconstruir el flujo completo de una venta** con identificadores no sensibles (`userId`, `saleId`, `productId`), sin datos personales ni contraseñas.
@@ -47,3 +47,4 @@ Tiempos observados por el cliente: login 1,2–1,4 s; crear categoría o product
 - `2026-11-10_etapa2_autenticacion.md`
 - `2026-11-10_etapa3_catalogo_ventas.md`
 - `2026-11-10_etapa4_frontend_navegador.md`
+- `2026-11-16_fal01_rendimiento.md`
