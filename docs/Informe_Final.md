@@ -3,10 +3,10 @@
 **Proyecto final de Calidad de Software: del SRS al Release con Evidencia**
 CORHUILA · Ingeniería de Sistemas · 2026
 Integrantes: Melanie Liset Sánchez Polanía; Harold Camilo Barrera Giraldo
+Docente: Cesar Augusto Tafur
+Fecha de entrega: 16/11/2026
 Repositorio: https://github.com/camilo28k/Quality_Project
 Fecha de corte de la evidencia: 16 de noviembre de 2026
-
-> **Borrador.** Las secciones marcadas como *pendiente del equipo* deben completarse antes de entregar: ejecución de caja negra, validación con el stakeholder y docente o fecha de entrega.
 
 ---
 
@@ -14,7 +14,7 @@ Fecha de corte de la evidencia: 16 de noviembre de 2026
 
 TiendApp es una plataforma web de inventario y ventas para un solo establecimiento. Se construyó un MVP con **3 módulos** (Usuarios/Autenticación, Productos/Categorías y Ventas) que cubre el flujo principal **autenticarse → registrar categoría y producto → registrar venta → descontar inventario**. El MVP implementa **15 requisitos de software** de la SRS, todos trazados hasta su requisito de negocio.
 
-**Resultado de la verificación automatizada (14–16/11/2026):** 96 pruebas automatizadas, **96 en PASS**.
+**Resultado de la verificación (14–16/11/2026):** 96 pruebas automatizadas, **96 en PASS**, y **12 de 12** casos de caja negra en el navegador en PASS.
 
 | Suite | Pruebas |
 |---|---|
@@ -29,7 +29,7 @@ Además, el CI en GitHub Actions corre lint, tipos, build, pruebas y umbrales de
 - **FAL-01:** confirmar una venta tarda de 2,6 a 5,1 s, frente al objetivo de 2 s (SWR-PERF-001).
 - **INC-03:** la contraseña de la base de datos quedó expuesta fuera del equipo.
 
-Faltan, además, la ejecución de caja negra y la validación con el stakeholder.
+Falta, además, la validación con el stakeholder.
 
 ## 2. Alcance y trazabilidad (ISO/IEC/IEEE 29148)
 
@@ -85,12 +85,16 @@ Las decisiones están registradas en `docs/DECISIONES.md` (D-01 a D-14). La iden
 
 | Tipo (guía) | Mínimo | Realizado | Resultado | Evidencia |
 |---|---|---|---|---|
-| Caja negra en navegador | 10 | 12 casos diseñados | **Pendiente de ejecución del equipo** | `05_Caja_Negra_Navegador/Casos_Caja_Negra.xlsx` |
+| Caja negra en navegador | 10 | 12 casos | **12 PASS** (16/11/2026) | `05_Caja_Negra_Navegador/` (XLSX + capturas) |
 | Unitarias | 8 | 57 | 57 PASS | `04_Matriz_Pruebas.xlsx` |
 | Caja blanca | 3 bloques | 3 bloques (`validateQuantity`, `SalesService.confirm`, `canAccess`) | PASS | `07_Caja_Blanca/ANALISIS_CAJA_BLANCA.md` |
 | Frontend RTL | 12 (3 explicadas) | 13 | 13 PASS | `08_RTL/EXPLICACION_RTL.md` |
 | API Postman | 8 (½ de dominio) | 19 (11 de dominio), 31 assertions | 19 PASS | `09_Postman/` |
 | E2E Playwright | 5 (2 de flujo completo) | 7 (2 de flujo completo) | 7 PASS | `10_Playwright/` |
+
+**Caja negra (16/11/2026):** los 12 casos se ejecutaron en el navegador contra la versión de `main`, sin mirar el código ni usar Postman, con cuentas de prueba creadas para la sesión (`bb-admin`, `bb-vendedor`). Todos en PASS. Observaciones:
+- Confirmar una venta tardó 3,7 s (FAL-01).
+- En el formulario de producto, los mensajes de error previos siguen visibles después de corregir el campo hasta volver a guardar (mejora de usabilidad).
 
 **Casos de aceptación de la SRS verificados:**
 - **TC-SALE-001:** con stock 10 y venta de 3, el stock queda en 7.
@@ -130,7 +134,7 @@ Las decisiones están registradas en `docs/DECISIONES.md` (D-01 a D-14). La iden
 
 | Característica | Estado | Principal evidencia o riesgo |
 |---|---|---|
-| Adecuación funcional | PARCIAL | 15 SWR con pruebas en PASS; falta caja negra y validación |
+| Adecuación funcional | PARCIAL | 15 SWR con pruebas automatizadas y 12/12 de caja negra en PASS; falta la validación con el stakeholder |
 | Eficiencia de desempeño | **FALLA** | FAL-01; capacidad de 20 usuarios sin prueba de carga |
 | Compatibilidad | PARCIAL | Solo Chromium; DEF-03 corregido |
 | Capacidad de interacción | PARCIAL | Mensajes por campo, labels, estados; prueba de usabilidad SWR-USE-001 no evaluada |
@@ -153,11 +157,10 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 **Lo que impide liberar a producción:**
 1. **FAL-01:** el requisito de desempeño SWR-PERF-001 no se cumple en ninguna medición.
 2. **INC-03:** con la contraseña de la BD expuesta no puede publicarse un ambiente.
-3. **Condiciones de aceptación de la SRS §13.3 incompletas:** faltan la caja negra y la revisión de los flujos por el administrador y un vendedor (archivos 05 y 03).
+3. **Condiciones de aceptación de la SRS §13.3 incompletas:** falta la revisión de los flujos por el administrador y un vendedor (archivo 03). La caja negra ya se ejecutó: 12/12 PASS.
 
 **Condiciones para liberar a producción:**
 - Rotar la contraseña de la BD.
-- Ejecutar y aprobar los 12 casos de caja negra.
 - Validar con el stakeholder.
 - Reducir FAL-01 por debajo de 2 s (agrupar escrituras de la transacción, API y BD en la misma región) o aprobar formalmente una excepción documentada para el MVP.
 
@@ -172,11 +175,11 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 
 ## 10. Pendientes del equipo antes de la entrega
 
-- [ ] Ejecutar los 12 casos de caja negra y registrar resultados y evidencia (`05_Caja_Negra_Navegador/`).
+- [x] Ejecutar los 12 casos de caja negra y registrar resultados y evidencia (`05_Caja_Negra_Navegador/`): 12/12 PASS el 16/11/2026.
 - [ ] Validar los SWR con el administrador y un vendedor (`03_Validacion_Requisitos.xlsx`).
 - [ ] Rotar la contraseña de la BD en Supabase (INC-03) — pospuesto por decisión del equipo.
 - [x] Integrar en `develop` (PR #16–#21), promover a `qa` por partes con cherry-pick (PR #22–#27) y a `main` (PR #28); proteger `qa` y `main`.
-- [ ] Completar el docente y la fecha de entrega en la portada (SRS C-10).
+- [x] Completar el docente y la fecha de entrega en la portada (SRS C-10).
 - [ ] Preparar la sustentación: todos los integrantes deben poder explicar la trazabilidad, una prueba unitaria, un análisis de caja blanca, 3 pruebas RTL, una API de Postman, 2 pruebas E2E, un hallazgo con su característica ISO 25010 y los logs.
 
 ## Anexo: ubicación de los entregables
