@@ -1,0 +1,23 @@
+# Levanta TiendApp con Docker. La base de datos sigue en Supabase (backend/.env).
+# Uso: docker compose up --build   ->  http://localhost:3000
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      PORT: "4000"
+      FRONTEND_URL: "http://localhost:3000"
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      # Dentro de la red de Docker el backend se llama "backend", no localhost.
+      BACKEND_URL: "http://backend:4000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
