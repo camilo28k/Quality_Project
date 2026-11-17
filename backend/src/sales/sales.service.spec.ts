@@ -1,36 +1,26 @@
-import { ConflictException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { AppLogger } from '../common/logger/app-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto } from './sales.dto';
-import { SalesService } from './sales.service';
+import { pgErrorCode, SalesService } from './sales.service';
 
 /**
- * Caja blanca de SalesService.confirm.
- * Caminos: A repetición | B stock insuficiente | C carrera de clave duplicada | D venta confirmada.
+ * Caja blanca de SalesService.confirm (versión de 2 idas y vueltas, FAL-01).
+ * Caminos: A repetición | B stock insuficiente (lectura o carrera) | C clave duplicada concurrente | D venta confirmada.
  */
 describe('SalesService.confirm — caja blanca', () => {
   const KEY = '7b1f8e0a-1111-4c3b-9b1a-0a0a0a0a0a0a';
-  const PRODUCT = {
+  const ARROZ = {
     id: 'p1',
     name: 'Arroz',
     unit: 'UNIT',
     price: 2500,
-    stock: new Prisma.Decimal(10),
+    stock: 10,
     active: true,
   };
 
-  let tx: {
-    product: {
-      findMany: jest.Mock;
-      updateMany: jest.Mock;
-      findUnique: jest.Mock;
-    };
-    sale: { create: jest.Mock };
-    inventoryMovement: { createMany: jest.Mock };
-  };
+  let queryRaw: jest.Mock;
   let saleFindUnique: jest.Mock;
-  let transaction: jest.Mock;
   let logger: { info: jest.Mock; warn: jest.Mock };
   let service: SalesService;
 
@@ -39,71 +29,71 @@ describe('SalesService.confirm — caja blanca', () => {
     paymentMethod: 'CASH',
     items: [{ productId: 'p1', quantity }],
   });
+  const prepared = (products: object[], existing: string | null = null) => [
+    { existing, products },
+  ];
+  const pgError = (code: string) =>
+    Object.assign(
+      new Error(`Raw query failed. Code: \`${code}\`. Message: test`),
+      { meta: { code } },
+    );
+  /** Valores interpolados en la sentencia de escritura (segunda llamada a $queryRaw). */
+  const writeValues = () => queryRaw.mock.calls[1].slice(1) as unknown[];
 
   beforeEach(() => {
-    tx = {
-      product: {
-        findMany: jest.fn().mockResolvedValue([PRODUCT]),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        findUnique: jest.fn().mockResolvedValue(PRODUCT),
-      },
-      sale: {
-        create: jest.fn().mockImplementation(({ data }) =>
-          Promise.resolve({
-            id: 's1',
-            userId: 'u1',
-            paymentMethod: data.paymentMethod,
-            total: data.total,
-            idempotencyKey: data.idempotencyKey,
-            createdAt: new Date(),
-            items: data.items.create.map((i: object) => ({
-              id: 'i1',
-              saleId: 's1',
-              ...i,
-            })),
-          }),
-        ),
-      },
-      inventoryMovement: {
-        createMany: jest.fn().mockResolvedValue({ count: 1 }),
-      },
-    };
-    saleFindUnique = jest.fn().mockResolvedValue(null);
-    transaction = jest.fn((fn: (t: typeof tx) => unknown) => fn(tx));
+    queryRaw = jest.fn();
+    saleFindUnique = jest.fn();
     logger = { info: jest.fn(), warn: jest.fn() };
     const prisma = {
+      $queryRaw: queryRaw,
       sale: { findUnique: saleFindUnique },
-      $transaction: transaction,
     } as unknown as PrismaService;
     service = new SalesService(prisma, logger as unknown as AppLogger);
   });
 
-  it('camino D: stock 10, vender 3 → descuenta 3, total 7500 y precio aplicado (TC-SALE-001)', async () => {
+  it('camino D: stock 10, vender 3 → una lectura y una escritura, total 7500 con precio aplicado (TC-SALE-001)', async () => {
+    queryRaw.mockResolvedValueOnce(prepared([ARROZ])).mockResolvedValueOnce([
+      {
+        id: 's1',
+        createdAt: new Date(),
+        items: [{ id: 'i1', productId: 'p1' }],
+      },
+    ]);
+
     const result = await service.confirm(dto(3), 'u1');
 
+    expect(queryRaw).toHaveBeenCalledTimes(2);
     expect(result.replayed).toBe(false);
-    expect(result.sale.total).toBe(7500);
+    expect(result.sale).toMatchObject({
+      id: 's1',
+      total: 7500,
+      paymentMethod: 'CASH',
+    });
     expect(result.sale.items[0]).toMatchObject({
+      id: 'i1',
       unitPrice: 2500,
       subtotal: 7500,
       quantity: 3,
     });
-    const update = tx.product.updateMany.mock.calls[0][0];
-    expect(Number(update.data.stock.decrement)).toBe(3);
-    expect(Number(update.where.stock.gte)).toBe(3);
-    expect(tx.inventoryMovement.createMany).toHaveBeenCalledTimes(1);
+    // La escritura recibe el descuento por producto y la clave de idempotencia.
+    expect(writeValues()).toEqual(
+      expect.arrayContaining([['p1'], ['3'], 7500, KEY]),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      'SalesService',
+      'SALE_CONFIRMED',
+      expect.any(String),
+      expect.any(Object),
+    );
   });
 
-  it('camino B: stock insuficiente → 409, sin descuento ni venta (TC-SALE-002)', async () => {
-    tx.product.findMany.mockResolvedValue([
-      { ...PRODUCT, stock: new Prisma.Decimal(2) },
-    ]);
+  it('camino B: stock insuficiente según la lectura → 409 sin escribir (TC-SALE-002)', async () => {
+    queryRaw.mockResolvedValueOnce(prepared([{ ...ARROZ, stock: 2 }]));
 
     await expect(service.confirm(dto(3), 'u1')).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(tx.product.updateMany).not.toHaveBeenCalled();
-    expect(tx.sale.create).not.toHaveBeenCalled();
+    expect(queryRaw).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       'SalesService',
       'SALE_REJECTED_STOCK',
@@ -112,59 +102,94 @@ describe('SalesService.confirm — caja blanca', () => {
     );
   });
 
-  it('camino B (carrera): otra venta consumió el stock entre lectura y descuento', async () => {
-    tx.product.updateMany.mockResolvedValue({ count: 0 });
-    tx.product.findUnique.mockResolvedValue({
-      ...PRODUCT,
-      stock: new Prisma.Decimal(1),
-    });
+  it('camino B (carrera): la guardia aborta la escritura (22012) y se informa el stock actual', async () => {
+    queryRaw
+      .mockResolvedValueOnce(prepared([ARROZ]))
+      .mockRejectedValueOnce(pgError('22012'))
+      .mockResolvedValueOnce(prepared([{ ...ARROZ, stock: 1 }]));
+
+    await expect(service.confirm(dto(3), 'u1')).rejects.toThrow(
+      new ConflictException([
+        'Stock insuficiente para «Arroz»: disponible 1, solicitado 3',
+      ]),
+    );
+  });
+
+  it('camino B (carrera, stock repuesto): igual se rechaza sin confirmar', async () => {
+    queryRaw
+      .mockResolvedValueOnce(prepared([ARROZ]))
+      .mockRejectedValueOnce(pgError('22012'))
+      .mockResolvedValueOnce(prepared([ARROZ]));
 
     await expect(service.confirm(dto(3), 'u1')).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(tx.sale.create).not.toHaveBeenCalled();
   });
 
-  it('camino A: repetir la misma solicitud devuelve la venta existente sin transacción (TC-REL-001)', async () => {
+  it('camino A: la clave ya existe → devuelve la venta sin escribir (TC-REL-001)', async () => {
+    queryRaw.mockResolvedValueOnce(prepared([ARROZ], 's1'));
     saleFindUnique.mockResolvedValue({
       id: 's1',
       userId: 'u1',
       total: 7500,
-      items: [{ quantity: new Prisma.Decimal(3) }],
+      items: [{ quantity: '3' }],
     });
 
     const result = await service.confirm(dto(3), 'u1');
 
-    expect(result.replayed).toBe(true);
-    expect(transaction).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ replayed: true, sale: { id: 's1' } });
+    expect(result.sale.items[0].quantity).toBe(3);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('camino A: la clave usada por otro usuario se rechaza', async () => {
+    queryRaw.mockResolvedValueOnce(prepared([ARROZ], 's1'));
     saleFindUnique.mockResolvedValue({ id: 's1', userId: 'otro', items: [] });
+
     await expect(service.confirm(dto(3), 'u1')).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
 
-  it('camino C: dos solicitudes simultáneas con la misma clave → la segunda recibe la primera venta', async () => {
-    const existing = { id: 's1', userId: 'u1', total: 7500, items: [] };
-    saleFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(existing);
-    transaction.mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError('dup', {
-        code: 'P2002',
-        clientVersion: 'test',
-      }),
-    );
+  it('camino C: dos solicitudes simultáneas con la misma clave (23505) → la segunda recibe la primera venta', async () => {
+    queryRaw
+      .mockResolvedValueOnce(prepared([ARROZ]))
+      .mockRejectedValueOnce(pgError('23505'));
+    saleFindUnique.mockResolvedValue({
+      id: 's1',
+      userId: 'u1',
+      total: 7500,
+      items: [],
+    });
 
-    const result = await service.confirm(dto(3), 'u1');
-    expect(result).toMatchObject({ replayed: true, sale: { id: 's1' } });
+    await expect(service.confirm(dto(3), 'u1')).resolves.toMatchObject({
+      replayed: true,
+      sale: { id: 's1' },
+    });
   });
 
-  it('rechaza producto inactivo y cantidad decimal para producto por unidad', async () => {
-    tx.product.findMany.mockResolvedValue([PRODUCT]);
-    await expect(service.confirm(dto(1.5), 'u1')).rejects.toThrow();
-    tx.product.findMany.mockResolvedValue([{ ...PRODUCT, active: false }]);
-    await expect(service.confirm(dto(1), 'u1')).rejects.toThrow();
-    expect(tx.product.updateMany).not.toHaveBeenCalled();
+  it('datos inválidos → 400 sin escribir; error desconocido de BD se propaga', async () => {
+    queryRaw.mockResolvedValueOnce(prepared([ARROZ]));
+    await expect(service.confirm(dto(1.5), 'u1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+
+    queryRaw
+      .mockResolvedValueOnce(prepared([ARROZ]))
+      .mockRejectedValueOnce(pgError('08006'));
+    await expect(service.confirm(dto(1), 'u1')).rejects.toThrow('08006');
+  });
+});
+
+describe('pgErrorCode', () => {
+  it('lee el código desde meta o desde el mensaje de Prisma', () => {
+    expect(pgErrorCode({ meta: { code: '23505' } })).toBe('23505');
+    expect(
+      pgErrorCode(
+        new Error('Raw query failed. Code: `22012`. Message: division by zero'),
+      ),
+    ).toBe('22012');
+    expect(pgErrorCode(new Error('otro error'))).toBeNull();
   });
 });

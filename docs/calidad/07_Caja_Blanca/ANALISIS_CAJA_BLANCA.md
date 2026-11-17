@@ -28,17 +28,21 @@ return null;
 
 ## Bloque 2 — `SalesService.confirm(dto, userId)`
 
-**Archivo:** `backend/src/sales/sales.service.ts` · **Pruebas:** `sales.service.spec.ts` · **SWR:** SWR-SALE-007, SWR-SALE-008, SWR-SALE-010
+**Archivo:** `backend/src/sales/sales.service.ts` (con `planSale` de `sale-plan.ts`) · **Pruebas:** `sales.service.spec.ts`, `sale-plan.spec.ts` · **SWR:** SWR-SALE-007, SWR-SALE-008, SWR-SALE-010
+
+Versión del 16/11/2026, reescrita para FAL-01. La venta se confirma en 2 idas y vueltas:
+1. Una lectura de la clave y los productos.
+2. Una sentencia SQL atómica (ver `13_Shift_Right_Logs/2026-11-16_fal01_rendimiento.md`).
 
 | Pregunta | Respuesta |
 |---|---|
-| Decisión | ¿Ya existe una venta con la misma clave? ¿Pertenece al mismo usuario? ¿Hay faltantes de stock? ¿El descuento condicional afectó 0 filas? ¿La creación falló por clave duplicada (P2002)? |
-| Caminos | **A** repetición (mismo usuario → devuelve venta; otro usuario → 409) · **B** stock insuficiente (validación previa o carrera en el descuento) · **C** clave duplicada concurrente → devuelve la primera venta · **D** venta confirmada |
-| Datos por camino | A: venta previa con la clave · B: stock 2, pedir 3; o `updateMany` con `count 0` · C: `$transaction` lanza P2002 · D: stock 10, pedir 3 |
-| Frontera | Pedir exactamente el stock disponible: debe confirmarse (cubierto en `findShortages`) |
-| Prueba por rama | «camino A…» (2 pruebas) · «camino B…» (2) · «camino C…» · «camino D…» |
-| Camino no cubierto | P2002 cuando `findByKey` aún no encuentra la venta ganadora (se relanza el error); error de BD no controlado |
-| Defecto oculto si solo se prueba el caso correcto | Doble clic que duplica la venta y el descuento; dos vendedores vendiendo las últimas unidades al mismo tiempo y stock negativo |
+| Decisión | ¿Ya existe una venta con esa clave? ¿Es del mismo usuario? ¿Los datos son válidos (`planSale` → INVALID)? ¿La lectura muestra faltantes (`planSale` → STOCK)? ¿La escritura falló con `22012` (la guardia: otro proceso consumió el stock) o con `23505` (clave duplicada concurrente)? |
+| Caminos | **A** repetición (mismo usuario → devuelve venta; otro → 409) · **B** stock insuficiente según la lectura (409 sin escribir) · **B-carrera** la guardia aborta la escritura (409 con stock actual) · **C** clave duplicada concurrente → devuelve la primera venta · **D** venta confirmada · datos inválidos → 400 · error desconocido de BD → se propaga |
+| Datos por camino | A: la lectura trae `existing` · B: stock 2, pedir 3 · B-carrera: la escritura lanza `22012` · C: la escritura lanza `23505` · D: stock 10, pedir 3 · inválido: 1,5 en producto por unidad · error: `08006` |
+| Frontera | Pedir exactamente el stock disponible debe confirmarse (`sale-plan.spec.ts`) |
+| Prueba por rama | «camino D…» · «camino B…» · «camino B (carrera)…» (2 pruebas) · «camino A…» (2) · «camino C…» · «datos inválidos…» |
+| Camino no cubierto | `23505` cuando la venta ganadora aún no es visible (responde 409 «No se pudo confirmar la venta»); `findOne` y `list` (consultas sin decisiones) |
+| Defecto oculto si solo se prueba el caso correcto | Doble clic que duplica la venta; dos vendedores con las últimas unidades y sobreventa. **Ocurrió de verdad (DEF-08):** las pruebas unitarias simulan la BD y no podían detectar que PostgreSQL omitía la guardia; lo encontró la prueba de carrera contra la BD real (`scripts/carrera-stock.mjs`). La caja blanca con mocks no reemplaza las pruebas de integración |
 
 ## Bloque 3 — `canAccess(requiredRoles, userRole)`
 
@@ -62,12 +66,13 @@ return requiredRoles.includes(userRole);
 
 ---
 
-## Cobertura medida (2026-11-10, `npm test -- --coverage`)
+## Cobertura medida (2026-11-16, `npx jest --coverage`)
 
 | Archivo | Líneas | Ramas |
 |---|---|---|
 | `sale-rules.ts` | 100 % | 100 % |
-| `sales.service.ts` | 93,4 % | 81,6 % |
+| `sale-plan.ts` | 100 % | 100 % |
+| `sales.service.ts` | 93,7 % | 78,6 % |
 | `password.util.ts` | 100 % | 100 % |
 | `auth.service.ts` | 95 % | 87 % |
 
