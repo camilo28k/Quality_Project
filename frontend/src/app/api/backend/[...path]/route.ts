@@ -6,7 +6,8 @@ import { backendUrl, SESSION_COOKIE } from '@/lib/session';
  * Reenvía las llamadas del navegador al backend NestJS agregando el token
  * desde la cookie httpOnly. El frontend nunca habla con la base de datos.
  */
-const ALLOWED = /^(categories|products|sales)(\/[\w-]+)*$/;
+// Solo recursos de negocio y el cambio de contraseña; el login/logout tienen su propia ruta.
+const ALLOWED = /^(?:(categories|products|sales|users|company|platform)(\/[\w-]+)*|auth\/change-password)$/;
 
 async function forward(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const path = (await params).path.join('/');
@@ -38,4 +39,4 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
   }
 }
 
-export { forward as GET, forward as POST, forward as PATCH };
+export { forward as GET, forward as POST, forward as PATCH, forward as DELETE };

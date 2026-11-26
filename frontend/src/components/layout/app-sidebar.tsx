@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/sidebar';
 import { navForRole } from '@/config/nav-config';
 import { ROLE_LABEL, type SessionUser } from '@/lib/session-types';
-import { IconChevronsDown, IconLogout, IconUserCircle } from '@tabler/icons-react';
+import { IconChevronsDown, IconKey, IconLogout, IconUserCircle } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -73,7 +73,10 @@ export default function AppSidebar({ user }: { user: SessionUser }) {
                 <IconUserCircle className='size-8' />
                 <span className='grid flex-1 text-left text-sm leading-tight'>
                   <span className='truncate font-medium'>{user.name}</span>
-                  <span className='text-muted-foreground truncate text-xs'>{ROLE_LABEL[user.role]}</span>
+                  <span className='text-muted-foreground truncate text-xs'>
+                    {ROLE_LABEL[user.role]}
+                    {user.company ? ` · ${user.company.tradeName}` : ''}
+                  </span>
                 </span>
                 <IconChevronsDown className='ml-auto size-4' />
               </DropdownMenuTrigger>
@@ -85,6 +88,10 @@ export default function AppSidebar({ user }: { user: SessionUser }) {
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/cambiar-contrasena')}>
+                  <IconKey className='mr-2 size-4' />
+                  Cambiar contraseña
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={signOut}>
                   <IconLogout className='mr-2 size-4' />
                   Cerrar sesión

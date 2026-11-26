@@ -3,7 +3,9 @@ import {
   IconHistory,
   IconLayoutDashboard,
   IconPackage,
+  IconSettings,
   IconShoppingCartPlus,
+  IconUsers,
   type Icon
 } from '@tabler/icons-react';
 import type { Role } from '@/lib/session-types';
@@ -24,7 +26,9 @@ export const navItems: NavItem[] = [
   { title: 'Nueva venta', url: '/dashboard/ventas/nueva', icon: IconShoppingCartPlus, roles: ['ADMIN', 'SELLER'] },
   { title: 'Ventas', url: '/dashboard/ventas', icon: IconHistory, roles: ['ADMIN', 'SELLER'] },
   { title: 'Productos', url: '/dashboard/productos', icon: IconPackage, roles: ['ADMIN', 'SELLER'] },
-  { title: 'Categorías', url: '/dashboard/categorias', icon: IconCategory, roles: ['ADMIN'] }
+  { title: 'Categorías', url: '/dashboard/categorias', icon: IconCategory, roles: ['ADMIN'] },
+  { title: 'Vendedores', url: '/dashboard/vendedores', icon: IconUsers, roles: ['ADMIN'] },
+  { title: 'Configuración', url: '/dashboard/configuracion', icon: IconSettings, roles: ['ADMIN'] }
 ];
 
 export function navForRole(role: Role): NavItem[] {
