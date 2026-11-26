@@ -9,7 +9,14 @@ export const INVALID_CREDENTIALS = 'Correo o contraseña incorrectos';
 
 export interface LoginResult {
   accessToken: string;
-  user: { id: string; name: string; email: string; role: Role };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: Role;
+    companyId: string | null;
+    mustChangePassword: boolean;
+  };
 }
 
 @Injectable()
@@ -26,11 +33,17 @@ export class AuthService {
    */
   async login(email: string, password: string): Promise<LoginResult> {
     const started = Date.now();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: { company: { select: { active: true } } },
+    });
 
+    // SWR-TEN-003: una empresa desactivada impide el inicio de sesión de sus usuarios.
+    const companyActive = !user?.company || user.company.active;
     const valid =
       !!user &&
       user.active &&
+      companyActive &&
       (await verifyPassword(password, user.passwordHash));
     if (!user || !valid) {
       this.logger.warn(
@@ -42,7 +55,9 @@ export class AuthService {
             ? 'USER_NOT_FOUND'
             : !user.active
               ? 'USER_INACTIVE'
-              : 'BAD_PASSWORD',
+              : !companyActive
+                ? 'COMPANY_INACTIVE'
+                : 'BAD_PASSWORD',
           userId: user?.id,
           durationMs: Date.now() - started,
         },
@@ -53,6 +68,7 @@ export class AuthService {
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
       role: user.role,
+      companyId: user.companyId,
     });
     this.logger.info(
       'AuthService',
@@ -61,6 +77,7 @@ export class AuthService {
       {
         userId: user.id,
         role: user.role,
+        companyId: user.companyId,
         durationMs: Date.now() - started,
       },
     );
@@ -71,6 +88,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        companyId: user.companyId,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }
@@ -78,7 +97,15 @@ export class AuthService {
   async me(userId: string) {
     return this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, name: true, email: true, role: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        companyId: true,
+        mustChangePassword: true,
+        company: { select: { id: true, tradeName: true } },
+      },
     });
   }
 }

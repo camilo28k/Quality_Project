@@ -2,12 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
 import { Prisma, Product } from '@prisma/client';
 import { AppLogger } from '../common/logger/app-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QUANTITY_MESSAGES, validateQuantity } from '../sales/sale-rules';
+import { assertSameCompany } from '../tenancy/tenant';
 import {
   CreateCategoryDto,
   CreateProductDto,
@@ -33,25 +33,26 @@ export class CatalogService {
     private readonly logger: AppLogger,
   ) {}
 
-  /** SWR-CAT-001 con nombre único sin distinguir mayúsculas (AJ-06). */
-  async createCategory(dto: CreateCategoryDto) {
+  /** SWR-CAT-001 con nombre único por empresa sin distinguir mayúsculas (AJ-06, SWR-TEN-001). */
+  async createCategory(dto: CreateCategoryDto, companyId: string) {
     const existing = await this.prisma.category.findFirst({
-      where: { name: { equals: dto.name, mode: 'insensitive' } },
+      where: { companyId, name: { equals: dto.name, mode: 'insensitive' } },
     });
     if (existing)
       throw new ConflictException(`Ya existe la categoría «${existing.name}»`);
     const category = await this.prisma.category.create({
-      data: { name: dto.name },
+      data: { name: dto.name, companyId },
     });
     this.logger.info('CatalogService', 'CATEGORY_CREATED', 'Categoría creada', {
       categoryId: category.id,
+      companyId,
     });
     return category;
   }
 
-  listCategories() {
+  listCategories(companyId: string) {
     return this.prisma.category.findMany({
-      where: { active: true },
+      where: { companyId, active: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -60,7 +61,11 @@ export class CatalogService {
    * SWR-PROD-001: registra el producto y su stock inicial como movimiento
    * INITIAL (D-05) en una sola transacción.
    */
-  async createProduct(dto: CreateProductDto, userId: string) {
+  async createProduct(
+    dto: CreateProductDto,
+    userId: string,
+    companyId: string,
+  ) {
     const qtyError =
       dto.initialStock === 0
         ? null
@@ -70,8 +75,9 @@ export class CatalogService {
         `Stock inicial: ${QUANTITY_MESSAGES[qtyError]}`,
       ]);
 
+    // Una categoría de otra empresa se trata como inexistente (SWR-TEN-001).
     const category = await this.prisma.category.findFirst({
-      where: { id: dto.categoryId, active: true },
+      where: { id: dto.categoryId, companyId, active: true },
     });
     if (!category)
       throw new BadRequestException(['La categoría seleccionada no existe']);
@@ -79,6 +85,7 @@ export class CatalogService {
     const product = await this.prisma.$transaction(async (tx) => {
       const created = await tx.product.create({
         data: {
+          companyId,
           name: dto.name,
           categoryId: dto.categoryId,
           unit: dto.unit,
@@ -91,6 +98,7 @@ export class CatalogService {
       });
       await tx.inventoryMovement.create({
         data: {
+          companyId,
           productId: created.id,
           type: 'INITIAL',
           quantity: new Prisma.Decimal(dto.initialStock),
@@ -103,22 +111,28 @@ export class CatalogService {
     this.logger.info('CatalogService', 'PRODUCT_CREATED', 'Producto creado', {
       productId: product.id,
       userId,
+      companyId,
     });
     return serializeProduct(product);
   }
 
   /** El vendedor solo ve activos; el administrador puede pedir también inactivos. */
-  async listProducts(includeInactive: boolean) {
+  async listProducts(companyId: string, includeInactive: boolean) {
     const products = await this.prisma.product.findMany({
-      where: includeInactive ? {} : { active: true },
+      where: includeInactive ? { companyId } : { companyId, active: true },
       include: { category: { select: { id: true, name: true } } },
       orderBy: { name: 'asc' },
     });
     return products.map(serializeProduct);
   }
 
-  async updateProduct(id: string, dto: UpdateProductDto) {
-    await this.findOrThrow(id);
+  async updateProduct(
+    id: string,
+    dto: UpdateProductDto,
+    companyId: string,
+    userId?: string,
+  ) {
+    await this.findOrThrow(id, companyId, userId);
     const product = await this.prisma.product.update({
       where: { id },
       data: {
@@ -143,8 +157,8 @@ export class CatalogService {
   }
 
   /** SWR-PROD-005: desactiva sin borrar ventas ni movimientos. */
-  async deactivateProduct(id: string) {
-    await this.findOrThrow(id);
+  async deactivateProduct(id: string, companyId: string, userId?: string) {
+    await this.findOrThrow(id, companyId, userId);
     const product = await this.prisma.product.update({
       where: { id },
       data: { active: false },
@@ -161,9 +175,14 @@ export class CatalogService {
     return serializeProduct(product);
   }
 
-  private async findOrThrow(id: string) {
+  private async findOrThrow(id: string, companyId: string, userId?: string) {
     const product = await this.prisma.product.findUnique({ where: { id } });
-    if (!product) throw new NotFoundException('Producto no encontrado');
-    return product;
+    return assertSameCompany(
+      product,
+      companyId,
+      this.logger,
+      { entity: 'Product', id, userId },
+      'Producto no encontrado',
+    );
   }
 }
