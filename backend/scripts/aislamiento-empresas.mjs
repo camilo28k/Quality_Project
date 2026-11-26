@@ -1,4 +1,5 @@
-// Aislamiento entre empresas (SWR-TEN-001/002/003, SWR-ROLE-001/002) contra la API real.
+// Aislamiento entre empresas (SWR-TEN-001/002/003, SWR-ROLE-001/002, SWR-ONB-001) contra la API real.
+// Cada cuenta nueva cambia su contraseña temporal y el ADMIN completa la configuración inicial.
 // El SUPER_ADMIN crea dos empresas con su ADMIN; cada ADMIN crea catálogo y un vendedor.
 // Luego se intenta leer y modificar datos de la otra empresa: todo debe responder 404/403.
 // Uso (desde backend/, con la API arriba): node scripts/aislamiento-empresas.mjs .env
@@ -37,10 +38,20 @@ async function setupCompany(letter) {
   const adminEmail = `admin.${letter.toLowerCase()}.${tag}@tiendapp.test`;
   await call('POST', `/platform/companies/${co.id}/admin`, sa, { name: `Admin ${letter}`, email: adminEmail, temporaryPassword: adminPass });
   const admin = await login(adminEmail, adminPass);
+  // SWR-ONB-001: con contraseña temporal el backend bloquea todo con 428.
+  check(`Empresa ${letter}: ADMIN con contraseña temporal bloqueado → 428`, (await call('GET', '/products', admin))[0], 428);
+  await call('POST', '/auth/change-password', admin, { currentPassword: adminPass, newPassword: tmp() });
+  check(`Empresa ${letter}: ADMIN sin configuración inicial bloqueado → 428`, (await call('GET', '/products', admin))[0], 428);
+  const [onbStatus] = await call('POST', '/company/onboarding', admin, {
+    tradeName: `Empresa ${letter} ${tag}`, taxId: '900123456-8', email: `ventas.${letter.toLowerCase()}.${tag}@tiendapp.test`,
+    invoicePrefix: `${letter}-`, firstInvoiceNumber: 1,
+  });
+  check(`Empresa ${letter}: configuración inicial completada`, onbStatus, 201);
   const sellerPass = tmp();
   const sellerEmail = `vendedor.${letter.toLowerCase()}.${tag}@tiendapp.test`;
   const [, seller] = await call('POST', '/users', admin, { name: `Vendedor ${letter}`, email: sellerEmail, temporaryPassword: sellerPass });
   const sellerToken = await login(sellerEmail, sellerPass);
+  await call('POST', '/auth/change-password', sellerToken, { currentPassword: sellerPass, newPassword: tmp() });
   // Mismo nombre de categoría en ambas empresas: la unicidad es por empresa.
   const [catStatus, cat] = await call('POST', '/categories', admin, { name: 'Bebidas' });
   const [, prod] = await call('POST', '/products', admin, { name: `Gaseosa ${letter}`, categoryId: cat.id, unit: 'UNIT', cost: 1000, price: 2000, initialStock: 10, minStock: 1 });
