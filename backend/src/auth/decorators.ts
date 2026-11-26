@@ -17,7 +17,15 @@ export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
 export interface AuthUser {
   userId: string;
   role: Role;
+  /** Empresa del usuario; null solo para SUPER_ADMIN (SWR-TEN-001). */
+  companyId: string | null;
+  mustChangePassword?: boolean;
+  onboardingCompleted?: boolean;
 }
+
+/** Ruta permitida aunque la cuenta tenga pasos obligatorios pendientes (SWR-ONB-001). */
+export const ALLOW_PENDING_KEY = 'allowPending';
+export const AllowPending = () => SetMetadata(ALLOW_PENDING_KEY, true);
 
 export const CurrentUser = createParamDecorator(
   (_: unknown, ctx: ExecutionContext): AuthUser => {

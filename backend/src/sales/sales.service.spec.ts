@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AppLogger } from '../common/logger/app-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto } from './sales.dto';
@@ -60,7 +64,7 @@ describe('SalesService.confirm — caja blanca', () => {
       },
     ]);
 
-    const result = await service.confirm(dto(3), 'u1');
+    const result = await service.confirm(dto(3), 'u1', 'co1');
 
     expect(queryRaw).toHaveBeenCalledTimes(2);
     expect(result.replayed).toBe(false);
@@ -77,7 +81,11 @@ describe('SalesService.confirm — caja blanca', () => {
     });
     // La escritura recibe el descuento por producto y la clave de idempotencia.
     expect(writeValues()).toEqual(
-      expect.arrayContaining([['p1'], ['3'], 7500, KEY]),
+      expect.arrayContaining([['p1'], ['3'], 7500, KEY, 'co1']),
+    );
+    // La lectura también se limita a la empresa (SWR-TEN-001).
+    expect(queryRaw.mock.calls[0].slice(1)).toEqual(
+      expect.arrayContaining(['co1', KEY]),
     );
     expect(logger.info).toHaveBeenCalledWith(
       'SalesService',
@@ -90,7 +98,7 @@ describe('SalesService.confirm — caja blanca', () => {
   it('camino B: stock insuficiente según la lectura → 409 sin escribir (TC-SALE-002)', async () => {
     queryRaw.mockResolvedValueOnce(prepared([{ ...ARROZ, stock: 2 }]));
 
-    await expect(service.confirm(dto(3), 'u1')).rejects.toBeInstanceOf(
+    await expect(service.confirm(dto(3), 'u1', 'co1')).rejects.toBeInstanceOf(
       ConflictException,
     );
     expect(queryRaw).toHaveBeenCalledTimes(1);
@@ -108,7 +116,7 @@ describe('SalesService.confirm — caja blanca', () => {
       .mockRejectedValueOnce(pgError('22012'))
       .mockResolvedValueOnce(prepared([{ ...ARROZ, stock: 1 }]));
 
-    await expect(service.confirm(dto(3), 'u1')).rejects.toThrow(
+    await expect(service.confirm(dto(3), 'u1', 'co1')).rejects.toThrow(
       new ConflictException([
         'Stock insuficiente para «Arroz»: disponible 1, solicitado 3',
       ]),
@@ -121,7 +129,7 @@ describe('SalesService.confirm — caja blanca', () => {
       .mockRejectedValueOnce(pgError('22012'))
       .mockResolvedValueOnce(prepared([ARROZ]));
 
-    await expect(service.confirm(dto(3), 'u1')).rejects.toBeInstanceOf(
+    await expect(service.confirm(dto(3), 'u1', 'co1')).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
@@ -135,7 +143,7 @@ describe('SalesService.confirm — caja blanca', () => {
       items: [{ quantity: '3' }],
     });
 
-    const result = await service.confirm(dto(3), 'u1');
+    const result = await service.confirm(dto(3), 'u1', 'co1');
 
     expect(result).toMatchObject({ replayed: true, sale: { id: 's1' } });
     expect(result.sale.items[0].quantity).toBe(3);
@@ -146,7 +154,7 @@ describe('SalesService.confirm — caja blanca', () => {
     queryRaw.mockResolvedValueOnce(prepared([ARROZ], 's1'));
     saleFindUnique.mockResolvedValue({ id: 's1', userId: 'otro', items: [] });
 
-    await expect(service.confirm(dto(3), 'u1')).rejects.toBeInstanceOf(
+    await expect(service.confirm(dto(3), 'u1', 'co1')).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
@@ -162,7 +170,7 @@ describe('SalesService.confirm — caja blanca', () => {
       items: [],
     });
 
-    await expect(service.confirm(dto(3), 'u1')).resolves.toMatchObject({
+    await expect(service.confirm(dto(3), 'u1', 'co1')).resolves.toMatchObject({
       replayed: true,
       sale: { id: 's1' },
     });
@@ -170,7 +178,7 @@ describe('SalesService.confirm — caja blanca', () => {
 
   it('datos inválidos → 400 sin escribir; error desconocido de BD se propaga', async () => {
     queryRaw.mockResolvedValueOnce(prepared([ARROZ]));
-    await expect(service.confirm(dto(1.5), 'u1')).rejects.toBeInstanceOf(
+    await expect(service.confirm(dto(1.5), 'u1', 'co1')).rejects.toBeInstanceOf(
       BadRequestException,
     );
     expect(queryRaw).toHaveBeenCalledTimes(1);
@@ -178,7 +186,7 @@ describe('SalesService.confirm — caja blanca', () => {
     queryRaw
       .mockResolvedValueOnce(prepared([ARROZ]))
       .mockRejectedValueOnce(pgError('08006'));
-    await expect(service.confirm(dto(1), 'u1')).rejects.toThrow('08006');
+    await expect(service.confirm(dto(1), 'u1', 'co1')).rejects.toThrow('08006');
   });
 });
 
@@ -191,5 +199,67 @@ describe('pgErrorCode', () => {
       ),
     ).toBe('22012');
     expect(pgErrorCode(new Error('otro error'))).toBeNull();
+  });
+});
+
+/** Lectura de ventas por empresa y por vendedor (SWR-TEN-001, SWR-ROLE-001). */
+describe('SalesService — lectura por empresa y vendedor', () => {
+  let findUnique: jest.Mock;
+  let findMany: jest.Mock;
+  let logger: { info: jest.Mock; warn: jest.Mock };
+  let service: SalesService;
+  const sale = { id: 's1', companyId: 'co1', userId: 'u-v1', items: [] };
+  const admin = { userId: 'u-a', role: 'ADMIN' as const, companyId: 'co1' };
+  const seller = { userId: 'u-v1', role: 'SELLER' as const, companyId: 'co1' };
+
+  beforeEach(() => {
+    findUnique = jest.fn();
+    findMany = jest.fn().mockResolvedValue([]);
+    logger = { info: jest.fn(), warn: jest.fn() };
+    service = new SalesService(
+      { sale: { findUnique, findMany } } as unknown as PrismaService,
+      logger as unknown as AppLogger,
+    );
+  });
+
+  it('el ADMIN lista todas las ventas de su empresa; el vendedor solo las suyas', async () => {
+    await service.list(admin, 'co1');
+    expect(findMany.mock.calls[0][0].where).toEqual({ companyId: 'co1' });
+    await service.list(seller, 'co1');
+    expect(findMany.mock.calls[1][0].where).toEqual({
+      companyId: 'co1',
+      userId: 'u-v1',
+    });
+  });
+
+  it('una venta de otra empresa responde 404 y queda AUTHZ_DENIED CROSS_TENANT', async () => {
+    findUnique.mockResolvedValue({ ...sale, companyId: 'co2' });
+    await expect(service.findOne('s1', admin, 'co1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Tenancy',
+      'AUTHZ_DENIED',
+      expect.any(String),
+      expect.objectContaining({ reason: 'CROSS_TENANT' }),
+    );
+  });
+
+  it('un vendedor no ve la venta de otro vendedor de su empresa (404, NOT_OWNER)', async () => {
+    findUnique.mockResolvedValue({ ...sale, userId: 'u-v2' });
+    await expect(service.findOne('s1', seller, 'co1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(JSON.stringify(logger.warn.mock.calls)).toContain('NOT_OWNER');
+  });
+
+  it('el vendedor ve su venta y el ADMIN ve cualquiera de su empresa', async () => {
+    findUnique.mockResolvedValue(sale);
+    await expect(service.findOne('s1', seller, 'co1')).resolves.toMatchObject({
+      id: 's1',
+    });
+    await expect(service.findOne('s1', admin, 'co1')).resolves.toMatchObject({
+      id: 's1',
+    });
   });
 });

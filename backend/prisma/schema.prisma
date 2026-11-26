@@ -12,6 +12,7 @@ datasource db {
 }
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   SELLER
 }
@@ -34,32 +35,71 @@ enum MovementType {
   SALE
 }
 
+/// Extensión multiempresa: SWR-TEN-001/003, SWR-ONB-001 (los datos del asistente se completan en la parte 2)
+model Company {
+  id                  String    @id @default(uuid())
+  tradeName           String
+  legalName           String?
+  taxId               String?
+  description         String?
+  logoUrl             String?
+  email               String?
+  emailVerifiedAt     DateTime?
+  phone               String?
+  address             String?
+  city                String?
+  invoicePrefix       String    @default("FAC-")
+  nextInvoiceNumber   Int       @default(1)
+  invoiceFooter       String?
+  currency            String    @default("COP")
+  timezone            String    @default("America/Bogota")
+  onboardingCompleted Boolean   @default(false)
+  active              Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  users      User[]
+  categories Category[]
+  products   Product[]
+  sales      Sale[]
+  movements  InventoryMovement[]
+}
+
 /// SWR-AUTH-001, SWR-AUTH-005
 model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id                 String   @id @default(uuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               Role
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  /// null solo para SUPER_ADMIN (CHECK en la migración)
+  companyId          String?
+  mustChangePassword Boolean  @default(false)
 
+  company   Company?            @relation(fields: [companyId], references: [id], onDelete: Restrict)
   sales     Sale[]
   movements InventoryMovement[]
 }
 
-/// SWR-CAT-001 (nombre único, AJ-06)
+/// SWR-CAT-001 (nombre único por empresa, AJ-06 + SWR-TEN-001)
 model Category {
   id        String    @id @default(uuid())
-  name      String    @unique
+  companyId String
+  name      String
   active    Boolean   @default(true)
   createdAt DateTime  @default(now())
+  company   Company   @relation(fields: [companyId], references: [id])
   products  Product[]
+
+  @@unique([companyId, name])
 }
 
 /// SWR-PROD-001, SWR-PROD-005
 model Product {
   id         String   @id @default(uuid())
+  companyId  String
   name       String
   categoryId String
   unit       Unit
@@ -71,14 +111,18 @@ model Product {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  company   Company             @relation(fields: [companyId], references: [id])
   category  Category            @relation(fields: [categoryId], references: [id])
   saleItems SaleItem[]
   movements InventoryMovement[]
+
+  @@index([companyId, active])
 }
 
 /// Stock inicial y descuentos por venta (D-05, SWR-SALE-008)
 model InventoryMovement {
   id        String       @id @default(uuid())
+  companyId String
   productId String
   type      MovementType
   quantity  Decimal      @db.Decimal(12, 3)
@@ -86,23 +130,30 @@ model InventoryMovement {
   saleId    String?
   createdAt DateTime     @default(now())
 
+  company Company @relation(fields: [companyId], references: [id])
   product Product @relation(fields: [productId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
   sale    Sale?   @relation(fields: [saleId], references: [id])
 }
 
-/// SWR-SALE-004, SWR-SALE-010 (idempotencyKey único), SWR-PAY-001
+/// SWR-SALE-004, SWR-SALE-010 (idempotencyKey único por empresa), SWR-PAY-001
 model Sale {
   id             String        @id @default(uuid())
+  companyId      String
+  /// Vendedor que registró la venta
   userId         String
   paymentMethod  PaymentMethod
   total          Int
-  idempotencyKey String        @unique
+  idempotencyKey String
   createdAt      DateTime      @default(now())
 
+  company   Company             @relation(fields: [companyId], references: [id])
   user      User                @relation(fields: [userId], references: [id])
   items     SaleItem[]
   movements InventoryMovement[]
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, createdAt])
 }
 
 /// SWR-SALE-003, SWR-SALE-005 (precio aplicado), SWR-MED-002

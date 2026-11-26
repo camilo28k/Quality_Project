@@ -5,7 +5,7 @@ import type { Role } from '@prisma/client';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from './decorators';
-import { UserStatusCache } from './user-status-cache';
+import { canOperate, UserStatus, UserStatusCache } from './user-status-cache';
 
 interface JwtPayload {
   sub: string;
@@ -17,6 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly cache: UserStatusCache,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -25,21 +26,43 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  private readonly cache = new UserStatusCache();
-
   /**
-   * Revalida que la cuenta siga activa y usa el rol actual de la BD,
-   * con una caché de 30 s para no consultar la BD en cada solicitud (FAL-01).
+   * Revalida que la cuenta y su empresa sigan activas y usa el rol y la empresa
+   * actuales de la BD (no los del token), con caché de 30 s (FAL-01, SWR-TEN-003).
    */
   async validate(payload: JwtPayload): Promise<AuthUser> {
-    const user = await this.cache.get(payload.sub, (id) =>
-      this.prisma.user.findUnique({
-        where: { id },
-        select: { id: true, role: true, active: true },
-      }),
-    );
-    if (!user || !user.active)
-      throw new UnauthorizedException('Sesión no válida');
-    return { userId: user.id, role: user.role };
+    const user = await this.cache.get(payload.sub, (id) => this.load(id));
+    if (!canOperate(user)) throw new UnauthorizedException('Sesión no válida');
+    return {
+      userId: user.id,
+      role: user.role,
+      companyId: user.companyId,
+      mustChangePassword: user.mustChangePassword,
+      onboardingCompleted: user.onboardingCompleted,
+    };
+  }
+
+  private async load(id: string): Promise<UserStatus | null> {
+    const u = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        role: true,
+        active: true,
+        companyId: true,
+        mustChangePassword: true,
+        company: { select: { active: true, onboardingCompleted: true } },
+      },
+    });
+    if (!u) return null;
+    return {
+      id: u.id,
+      role: u.role,
+      active: u.active,
+      companyId: u.companyId,
+      companyActive: u.company?.active ?? u.role === 'SUPER_ADMIN',
+      mustChangePassword: u.mustChangePassword,
+      onboardingCompleted: u.company?.onboardingCompleted ?? true,
+    };
   }
 }

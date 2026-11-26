@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { Sale, SaleItem } from '@prisma/client';
 import { AppLogger } from '../common/logger/app-logger.service';
+import type { AuthUser } from '../auth/decorators';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertSameCompany } from '../tenancy/tenant';
 import { CreateSaleDto } from './sales.dto';
 import { planSale, ProductSnapshot, SalePlan } from './sale-plan';
 import {
@@ -72,18 +74,26 @@ export class SalesService {
    * 2) una sola sentencia atómica que descuenta el stock y registra venta,
    *    líneas y movimientos (SWR-SALE-005/008), o no hace nada.
    * Reglas: SWR-SALE-003/004/007, SWR-SALE-010, SWR-MED-002, SWR-PAY-001.
+   * Multiempresa: solo se venden productos de la empresa del vendedor y la clave de
+   * idempotencia es única por empresa (SWR-TEN-001).
    */
-  async confirm(dto: CreateSaleDto, userId: string): Promise<ConfirmResult> {
+  async confirm(
+    dto: CreateSaleDto,
+    userId: string,
+    companyId: string,
+  ): Promise<ConfirmResult> {
     const started = Date.now();
     const productIds = [...new Set(dto.items.map((i) => i.productId))];
 
     const { existing, products } = await this.prepare(
+      companyId,
       dto.idempotencyKey,
       productIds,
     );
 
     // Camino A — repetición de una solicitud ya confirmada: no se descuenta de nuevo.
-    if (existing) return this.replayByKey(dto.idempotencyKey, userId);
+    if (existing)
+      return this.replayByKey(companyId, dto.idempotencyKey, userId);
 
     const result = planSale(dto.items, products);
     if (!result.ok && result.kind === 'INVALID') {
@@ -94,12 +104,16 @@ export class SalesService {
 
     let row: WriteRow;
     try {
-      row = await this.write(dto, userId, result.plan);
+      row = await this.write(dto, userId, companyId, result.plan);
     } catch (e) {
       const code = pgErrorCode(e);
       // Camino B (carrera) — otra venta consumió el stock entre la lectura y la escritura.
       if (code === PG_DIVISION_BY_ZERO) {
-        const fresh = await this.prepare(dto.idempotencyKey, productIds);
+        const fresh = await this.prepare(
+          companyId,
+          dto.idempotencyKey,
+          productIds,
+        );
         return this.rejectStock(
           this.currentShortages(result.plan, fresh.products),
           userId,
@@ -107,16 +121,17 @@ export class SalesService {
       }
       // Camino C — dos solicitudes simultáneas con la misma clave: gana la primera.
       if (code === PG_UNIQUE_VIOLATION) {
-        return this.replayByKey(dto.idempotencyKey, userId);
+        return this.replayByKey(companyId, dto.idempotencyKey, userId);
       }
       throw e;
     }
 
     // Camino D — venta confirmada.
-    const sale = this.toSale(row, dto, userId, result.plan);
+    const sale = this.toSale(row, dto, userId, companyId, result.plan);
     this.logger.info('SalesService', 'SALE_CONFIRMED', 'Venta confirmada', {
       saleId: sale.id,
       userId,
+      companyId,
       lines: sale.items.length,
       total: sale.total,
       paymentMethod: sale.paymentMethod,
@@ -125,16 +140,23 @@ export class SalesService {
     return { replayed: false, sale: serializeSale(sale) };
   }
 
-  /** Ida y vuelta 1: clave de idempotencia y productos en una sola consulta. */
-  private async prepare(key: string, ids: string[]): Promise<PrepareRow> {
+  /**
+   * Ida y vuelta 1: clave de idempotencia y productos en una sola consulta.
+   * Un producto de otra empresa no se devuelve: para esta venta no existe.
+   */
+  private async prepare(
+    companyId: string,
+    key: string,
+    ids: string[],
+  ): Promise<PrepareRow> {
     const rows = await this.prisma.$queryRaw<PrepareRow[]>`
       SELECT
-        (SELECT s."id" FROM "Sale" s WHERE s."idempotencyKey" = ${key}) AS "existing",
+        (SELECT s."id" FROM "Sale" s WHERE s."companyId" = ${companyId} AND s."idempotencyKey" = ${key}) AS "existing",
         COALESCE((
           SELECT json_agg(json_build_object(
             'id', p."id", 'name', p."name", 'unit', p."unit", 'price', p."price",
             'stock', p."stock", 'active', p."active"))
-          FROM "Product" p WHERE p."id" = ANY(${ids}::text[])
+          FROM "Product" p WHERE p."id" = ANY(${ids}::text[]) AND p."companyId" = ${companyId}
         ), '[]'::json) AS "products"`;
     const row = rows[0];
     return {
@@ -152,6 +174,7 @@ export class SalesService {
   private async write(
     dto: CreateSaleDto,
     userId: string,
+    companyId: string,
     plan: SalePlan,
   ): Promise<WriteRow> {
     const dIds = plan.discounts.map((d) => d.productId);
@@ -170,22 +193,22 @@ export class SalesService {
         -- Bloquea los productos siempre en el mismo orden (por id) para que dos ventas
         -- simultáneas no se esperen en ciclo (DEF-09: deadlock en la prueba de 20 concurrentes).
         SELECT p."id" FROM "Product" p
-        WHERE p."id" = ANY(${dIds}::text[])
+        WHERE p."id" = ANY(${dIds}::text[]) AND p."companyId" = ${companyId}
         ORDER BY p."id"
         FOR UPDATE
       ),
       upd AS (
         UPDATE "Product" p SET "stock" = p."stock" - d.qty, "updatedAt" = now()
         FROM d JOIN locked ON locked."id" = d.product_id
-        WHERE p."id" = d.product_id AND p."active" AND p."stock" >= d.qty
+        WHERE p."id" = d.product_id AND p."companyId" = ${companyId} AND p."active" AND p."stock" >= d.qty
         RETURNING p."id"
       ),
       guard AS MATERIALIZED (
         SELECT 1 / (CASE WHEN (SELECT count(*) FROM upd) = ${dIds.length} THEN 1 ELSE 0 END) AS ok
       ),
       sale AS (
-        INSERT INTO "Sale" ("id", "userId", "paymentMethod", "total", "idempotencyKey")
-        SELECT gen_random_uuid()::text, ${userId}, ${dto.paymentMethod}::"PaymentMethod", ${plan.total}, ${dto.idempotencyKey}
+        INSERT INTO "Sale" ("id", "companyId", "userId", "paymentMethod", "total", "idempotencyKey")
+        SELECT gen_random_uuid()::text, ${companyId}, ${userId}, ${dto.paymentMethod}::"PaymentMethod", ${plan.total}, ${dto.idempotencyKey}
         FROM guard
         -- La condición obliga a evaluar ok: sin ella PostgreSQL omite el cálculo y la guardia no actúa (DEF-08).
         WHERE guard.ok = 1
@@ -202,8 +225,8 @@ export class SalesService {
         RETURNING "id", "productId"
       ),
       mov AS (
-        INSERT INTO "InventoryMovement" ("id", "productId", "type", "quantity", "userId", "saleId")
-        SELECT gen_random_uuid()::text, d.product_id, 'SALE'::"MovementType", d.qty, ${userId}, sale."id"
+        INSERT INTO "InventoryMovement" ("id", "companyId", "productId", "type", "quantity", "userId", "saleId")
+        SELECT gen_random_uuid()::text, ${companyId}, d.product_id, 'SALE'::"MovementType", d.qty, ${userId}, sale."id"
         FROM sale, d
         RETURNING 1
       )
@@ -219,6 +242,7 @@ export class SalesService {
     row: WriteRow,
     dto: CreateSaleDto,
     userId: string,
+    companyId: string,
     plan: SalePlan,
   ): SaleWithItems {
     const pending = new Map<string, string[]>();
@@ -227,6 +251,7 @@ export class SalesService {
     }
     return {
       id: row.id,
+      companyId,
       userId,
       paymentMethod: dto.paymentMethod,
       total: plan.total,
@@ -291,11 +316,12 @@ export class SalesService {
   }
 
   private async replayByKey(
+    companyId: string,
     idempotencyKey: string,
     userId: string,
   ): Promise<ConfirmResult> {
     const sale = await this.prisma.sale.findUnique({
-      where: { idempotencyKey },
+      where: { companyId_idempotencyKey: { companyId, idempotencyKey } },
       include: SALE_INCLUDE,
     });
     if (!sale) throw new ConflictException('No se pudo confirmar la venta');
@@ -313,20 +339,41 @@ export class SalesService {
     return { replayed: true, sale: serializeSale(sale) };
   }
 
-  async findOne(id: string) {
-    const sale = await this.prisma.sale.findUnique({
+  /** Detalle de una venta de la empresa; el vendedor solo ve las suyas (SWR-ROLE-001). */
+  async findOne(id: string, user: AuthUser, companyId: string) {
+    const found = await this.prisma.sale.findUnique({
       where: { id },
       include: {
         ...SALE_INCLUDE,
         user: { select: { id: true, name: true } },
       },
     });
-    if (!sale) throw new NotFoundException('Venta no encontrada');
+    const sale = assertSameCompany(
+      found,
+      companyId,
+      this.logger,
+      { entity: 'Sale', id, userId: user.userId },
+      'Venta no encontrada',
+    );
+    if (user.role === 'SELLER' && sale.userId !== user.userId) {
+      this.logger.warn(
+        'SalesService',
+        'AUTHZ_DENIED',
+        'Un vendedor intentó ver una venta de otro vendedor',
+        { reason: 'NOT_OWNER', saleId: id, userId: user.userId },
+      );
+      throw new NotFoundException('Venta no encontrada');
+    }
     return serializeSale(sale);
   }
 
-  async list() {
+  /** Ventas de la empresa (ADMIN) o solo las propias (SELLER), cada una con su vendedor. */
+  async list(user: AuthUser, companyId: string) {
     const sales = await this.prisma.sale.findMany({
+      where:
+        user.role === 'SELLER'
+          ? { companyId, userId: user.userId }
+          : { companyId },
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: {
