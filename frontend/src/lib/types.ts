@@ -36,13 +36,25 @@ export interface SaleItem {
   product?: { name: string };
 }
 
+export type SaleStatus = 'CONFIRMED' | 'VOIDED';
+
 export interface Sale {
   id: string;
+  /** SWR-INV-001: prefijo + consecutivo de la empresa */
+  invoiceNumber: string;
+  status: SaleStatus;
   paymentMethod: PaymentMethod;
   total: number;
   createdAt: string;
   items: SaleItem[];
+  userId?: string;
   user?: { id: string; name: string };
+  customerEmail?: string | null;
+  voidedAt?: string | null;
+  voidReason?: string | null;
+  correctsSale?: { id: string; invoiceNumber: string } | null;
+  reissuedAs?: { id: string; invoiceNumber: string } | null;
+  correctionRequests?: { id: string; reason: string; createdAt: string; requestedById: string }[];
 }
 
 export const UNIT_LABEL: Record<Unit, string> = { UNIT: 'unidad', KG: 'kg', LB: 'lb' };

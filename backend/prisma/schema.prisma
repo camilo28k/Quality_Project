@@ -39,6 +39,12 @@ enum MovementType {
   VOID_RETURN
 }
 
+/// SWR-SALE-V01: una venta confirmada nunca se borra; se anula
+enum SaleStatus {
+  CONFIRMED
+  VOIDED
+}
+
 enum RequestStatus {
   PENDING
   APPROVED
@@ -201,6 +207,15 @@ model Sale {
   paymentMethod  PaymentMethod
   total          Int
   idempotencyKey String
+  /// SWR-INV-001: prefijo + consecutivo, único por empresa, asignado en la sentencia atómica
+  invoiceNumber  String
+  status         SaleStatus    @default(CONFIRMED)
+  customerEmail  String?
+  voidedAt       DateTime?
+  voidedById     String?
+  voidReason     String?
+  /// SWR-SALE-V02: la reemisión apunta a la venta original que corrige
+  correctsSaleId String?       @unique
   createdAt      DateTime      @default(now())
 
   company   Company             @relation(fields: [companyId], references: [id])
@@ -208,8 +223,31 @@ model Sale {
   items     SaleItem[]
   movements InventoryMovement[]
 
+  correctsSale       Sale?                   @relation("Reissue", fields: [correctsSaleId], references: [id], onDelete: Restrict)
+  reissuedAs         Sale?                   @relation("Reissue")
+  correctionRequests SaleCorrectionRequest[]
+
   @@unique([companyId, idempotencyKey])
+  @@unique([companyId, invoiceNumber])
   @@index([companyId, createdAt])
+}
+
+/// SWR-SALE-V03: el vendedor pide corregir una venta suya; el ADMIN decide
+model SaleCorrectionRequest {
+  id            String        @id @default(uuid())
+  companyId     String
+  saleId        String
+  requestedById String
+  reason        String
+  status        RequestStatus @default(PENDING)
+  resolvedById  String?
+  resolvedAt    DateTime?
+  resolution    String?
+  createdAt     DateTime      @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@index([companyId, status])
 }
 
 /// SWR-SALE-003, SWR-SALE-005 (precio aplicado), SWR-MED-002

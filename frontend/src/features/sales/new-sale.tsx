@@ -36,6 +36,8 @@ export function NewSale() {
   const [lineError, setLineError] = useState<string | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [payment, setPayment] = useState<PaymentMethod>('CASH');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [saleErrors, setSaleErrors] = useState<string[]>([]);
   const [confirmed, setConfirmed] = useState<Sale | null>(null);
@@ -70,6 +72,13 @@ export function NewSale() {
 
   async function confirm() {
     if (submitting || lines.length === 0) return;
+    const email = customerEmail.trim().toLowerCase();
+    // Decisión c: el correo del cliente es opcional, pero si se escribe debe ser válido.
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailError('El correo del cliente no tiene un formato válido');
+      return;
+    }
+    setEmailError(null);
     setSubmitting(true);
     setSaleErrors([]);
     try {
@@ -78,11 +87,13 @@ export function NewSale() {
         body: {
           idempotencyKey,
           paymentMethod: payment,
-          items: lines.map((l) => ({ productId: l.product.id, quantity: l.quantity }))
+          items: lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+          ...(email ? { customerEmail: email } : {})
         }
       });
       toast.success(`Venta confirmada por ${formatCOP(sale.total)}`);
       setConfirmed(sale);
+      setCustomerEmail('');
       changeCart([]);
       await products.reload();
     } catch (e) {
@@ -149,7 +160,7 @@ export function NewSale() {
         <CardContent className='space-y-4'>
           {confirmed && (
             <Alert role='status'>
-              <AlertTitle>Venta confirmada</AlertTitle>
+              <AlertTitle>Venta confirmada · Factura {confirmed.invoiceNumber}</AlertTitle>
               <AlertDescription>
                 Total {formatCOP(confirmed.total)} · {PAYMENT_LABEL[confirmed.paymentMethod]} · {confirmed.items.length}{' '}
                 línea(s)
@@ -232,6 +243,19 @@ export function NewSale() {
                 </NativeSelectOption>
               ))}
             </NativeSelect>
+          </Field>
+          <Field data-invalid={!!emailError}>
+            <FieldLabel htmlFor='sale-email'>Correo del cliente (opcional)</FieldLabel>
+            <Input
+              id='sale-email'
+              type='email'
+              inputMode='email'
+              value={customerEmail}
+              onChange={(e) => setCustomerEmail(e.target.value)}
+              aria-invalid={!!emailError}
+              placeholder='Para enviarle la factura'
+            />
+            {emailError && <FieldError>{emailError}</FieldError>}
           </Field>
           <Button size='lg' onClick={confirm} disabled={submitting || lines.length === 0}>
             {submitting && <Spinner />}

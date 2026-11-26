@@ -4,12 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Sale, SaleItem } from '@prisma/client';
+import { Prisma, Sale, SaleItem } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { AppLogger } from '../common/logger/app-logger.service';
 import type { AuthUser } from '../auth/decorators';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertSameCompany } from '../tenancy/tenant';
-import { CreateSaleDto } from './sales.dto';
+import { CreateSaleDto, ReissueSaleDto } from './sales.dto';
 import { planSale, ProductSnapshot, SalePlan } from './sale-plan';
 import {
   findShortages,
@@ -50,6 +51,9 @@ const SALE_INCLUDE = {
   items: { include: { product: { select: { name: true } } } },
 } as const;
 
+/** Cliente de BD: Prisma o la transacción en curso (reemisión). */
+type Db = Pick<PrismaService, '$queryRaw'>;
+
 interface PrepareRow {
   existing: string | null;
   products: ProductSnapshot[];
@@ -58,14 +62,30 @@ interface PrepareRow {
 interface WriteRow {
   id: string;
   createdAt: Date;
+  invoiceNumber: string;
   items: { id: string; productId: string }[];
 }
+
+/** Relaciones que acompañan una venta en el historial y en el detalle. */
+const SALE_DETAIL = {
+  ...SALE_INCLUDE,
+  user: { select: { id: true, name: true } },
+  correctsSale: { select: { id: true, invoiceNumber: true } },
+  reissuedAs: { select: { id: true, invoiceNumber: true } },
+  correctionRequests: {
+    where: { status: 'PENDING' as const },
+    select: { id: true, reason: true, createdAt: true, requestedById: true },
+  },
+} satisfies Prisma.SaleInclude;
+
+type SaleToVoid = Sale & { items: SaleItem[] };
 
 @Injectable()
 export class SalesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly logger: AppLogger,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -149,8 +169,9 @@ export class SalesService {
     companyId: string,
     key: string,
     ids: string[],
+    db: Db = this.prisma,
   ): Promise<PrepareRow> {
-    const rows = await this.prisma.$queryRaw<PrepareRow[]>`
+    const rows = await db.$queryRaw<PrepareRow[]>`
       SELECT
         (SELECT s."id" FROM "Sale" s WHERE s."companyId" = ${companyId} AND s."idempotencyKey" = ${key}) AS "existing",
         COALESCE((
@@ -177,7 +198,11 @@ export class SalesService {
     userId: string,
     companyId: string,
     plan: SalePlan,
+    opts: { db?: Db; correctsSaleId?: string } = {},
   ): Promise<WriteRow> {
+    const db = opts.db ?? this.prisma;
+    const correctsSaleId = opts.correctsSaleId ?? null;
+    const customerEmail = dto.customerEmail ?? null;
     const dIds = plan.discounts.map((d) => d.productId);
     const dQty = plan.discounts.map((d) => String(d.quantity));
     const lIds = plan.lines.map((l) => l.productId);
@@ -186,7 +211,7 @@ export class SalesService {
     const lPrice = plan.lines.map((l) => l.unitPrice);
     const lSub = plan.lines.map((l) => l.subtotal);
 
-    const rows = await this.prisma.$queryRaw<WriteRow[]>`
+    const rows = await db.$queryRaw<WriteRow[]>`
       WITH d AS (
         SELECT * FROM unnest(${dIds}::text[], ${dQty}::numeric[]) AS d(product_id, qty)
       ),
@@ -207,13 +232,22 @@ export class SalesService {
       guard AS MATERIALIZED (
         SELECT 1 / (CASE WHEN (SELECT count(*) FROM upd) = ${dIds.length} THEN 1 ELSE 0 END) AS ok
       ),
-      sale AS (
-        INSERT INTO "Sale" ("id", "companyId", "userId", "paymentMethod", "total", "idempotencyKey")
-        SELECT gen_random_uuid()::text, ${companyId}, ${userId}, ${dto.paymentMethod}::"PaymentMethod", ${plan.total}, ${dto.idempotencyKey}
+      inv AS (
+        -- SWR-INV-001: consecutivo por empresa en la misma sentencia. Si la venta se aborta
+        -- (stock o clave repetida), el contador también se deshace: sin huecos ni duplicados.
+        -- Se toma después de la guardia, así que el orden de bloqueo es productos → empresa.
+        UPDATE "Company" c SET "nextInvoiceNumber" = c."nextInvoiceNumber" + 1
         FROM guard
+        WHERE c."id" = ${companyId} AND guard.ok = 1
+        RETURNING c."invoicePrefix" || (c."nextInvoiceNumber" - 1) AS num
+      ),
+      sale AS (
+        INSERT INTO "Sale" ("id", "companyId", "userId", "paymentMethod", "total", "idempotencyKey", "invoiceNumber", "customerEmail", "correctsSaleId")
+        SELECT gen_random_uuid()::text, ${companyId}, ${userId}, ${dto.paymentMethod}::"PaymentMethod", ${plan.total}, ${dto.idempotencyKey}, inv.num, ${customerEmail}, ${correctsSaleId}
+        FROM guard, inv
         -- La condición obliga a evaluar ok: sin ella PostgreSQL omite el cálculo y la guardia no actúa (DEF-08).
         WHERE guard.ok = 1
-        RETURNING "id", "createdAt"
+        RETURNING "id", "createdAt", "invoiceNumber"
       ),
       l AS (
         SELECT * FROM unnest(${lIds}::text[], ${lQty}::numeric[], ${lUnit}::text[], ${lPrice}::int[], ${lSub}::int[])
@@ -231,7 +265,7 @@ export class SalesService {
         FROM sale, d
         RETURNING 1
       )
-      SELECT sale."id", sale."createdAt",
+      SELECT sale."id", sale."createdAt", sale."invoiceNumber",
              COALESCE((SELECT json_agg(json_build_object('id', items."id", 'productId', items."productId")) FROM items), '[]'::json) AS "items",
              (SELECT count(*) FROM mov) AS "movements"
       FROM sale`;
@@ -254,6 +288,13 @@ export class SalesService {
       id: row.id,
       companyId,
       userId,
+      invoiceNumber: row.invoiceNumber,
+      status: 'CONFIRMED',
+      customerEmail: dto.customerEmail ?? null,
+      voidedAt: null,
+      voidedById: null,
+      voidReason: null,
+      correctsSaleId: null,
       paymentMethod: dto.paymentMethod,
       total: plan.total,
       idempotencyKey: dto.idempotencyKey,
@@ -344,10 +385,7 @@ export class SalesService {
   async findOne(id: string, user: AuthUser, companyId: string) {
     const found = await this.prisma.sale.findUnique({
       where: { id },
-      include: {
-        ...SALE_INCLUDE,
-        user: { select: { id: true, name: true } },
-      },
+      include: SALE_DETAIL,
     });
     const sale = assertSameCompany(
       found,
@@ -377,11 +415,236 @@ export class SalesService {
           : { companyId },
       orderBy: { createdAt: 'desc' },
       take: 50,
-      include: {
-        ...SALE_INCLUDE,
-        user: { select: { id: true, name: true } },
-      },
+      include: SALE_DETAIL,
     });
     return sales.map(serializeSale);
+  }
+
+  /** Factura de una venta: datos de la empresa, vendedor, consecutivo y detalle (SWR-INV-002). */
+  async invoice(id: string, user: AuthUser, companyId: string) {
+    const sale = await this.findOne(id, user, companyId);
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+      select: {
+        tradeName: true,
+        legalName: true,
+        taxId: true,
+        email: true,
+        phone: true,
+        address: true,
+        city: true,
+        logoUrl: true,
+        invoiceFooter: true,
+        currency: true,
+      },
+    });
+    return { sale, company };
+  }
+
+  /**
+   * SWR-SALE-V01: anula una venta confirmada (solo ADMIN). La venta no se borra
+   * ni se modifica en su contenido; se marca ANULADA con motivo y el stock vuelve,
+   * todo en una transacción.
+   */
+  async void(id: string, reason: string, companyId: string, actor: AuthUser) {
+    const sale = await this.loadSale(id, companyId, actor);
+    await this.prisma.$transaction((tx) =>
+      this.voidInTx(tx, sale, reason, companyId, actor),
+    );
+    this.logger.info('SalesService', 'SALE_VOIDED', 'Venta anulada', {
+      saleId: id,
+      companyId,
+      userId: actor.userId,
+    });
+    return this.findOne(id, actor, companyId);
+  }
+
+  /**
+   * SWR-SALE-V02: anula la venta original y registra una nueva vinculada a ella
+   * (correctsSaleId), a nombre del mismo vendedor, con un consecutivo nuevo.
+   * Si la venta nueva no se puede registrar (stock, datos), no se anula nada.
+   */
+  async reissue(
+    id: string,
+    dto: ReissueSaleDto,
+    companyId: string,
+    actor: AuthUser,
+  ): Promise<ConfirmResult> {
+    const original = await this.loadSale(id, companyId, actor);
+    const productIds = [...new Set(dto.items.map((i) => i.productId))];
+    let written: { row: WriteRow; plan: SalePlan };
+    try {
+      written = await this.prisma.$transaction(
+        async (tx) => {
+          await this.voidInTx(tx, original, dto.reason, companyId, actor);
+          const db = tx as unknown as Db;
+          // Se lee después de devolver el stock: la venta corregida puede reutilizarlo.
+          const { existing, products } = await this.prepare(
+            companyId,
+            dto.idempotencyKey,
+            productIds,
+            db,
+          );
+          if (existing)
+            throw new ConflictException(
+              'La clave de idempotencia ya fue usada en otra venta',
+            );
+          const result = planSale(dto.items, products);
+          if (!result.ok && result.kind === 'INVALID')
+            throw new BadRequestException(result.errors);
+          if (!result.ok)
+            throw new ConflictException(result.shortages.map(shortageMessage));
+          const row = await this.write(
+            dto,
+            original.userId,
+            companyId,
+            result.plan,
+            {
+              db,
+              correctsSaleId: original.id,
+            },
+          );
+          await this.audit.record(
+            actor,
+            {
+              companyId,
+              action: 'SALE_REISSUED',
+              entity: 'Sale',
+              entityId: row.id,
+              before: {
+                invoiceNumber: original.invoiceNumber,
+                total: original.total,
+              },
+              after: {
+                invoiceNumber: row.invoiceNumber,
+                total: result.plan.total,
+              },
+              reason: dto.reason,
+            },
+            tx,
+          );
+          return { row, plan: result.plan };
+        },
+        // Con Supabase cada ida y vuelta tarda ~600 ms; la reemisión hace varias.
+        { timeout: 20_000, maxWait: 10_000 },
+      );
+    } catch (e) {
+      const code = pgErrorCode(e);
+      if (code === PG_DIVISION_BY_ZERO)
+        throw new ConflictException(
+          'Otra venta consumió el stock mientras se reemitía. Intente de nuevo.',
+        );
+      if (code === PG_UNIQUE_VIOLATION)
+        throw new ConflictException('La venta ya fue reemitida');
+      throw e;
+    }
+    const sale = this.toSale(
+      written.row,
+      dto,
+      original.userId,
+      companyId,
+      written.plan,
+    );
+    sale.correctsSaleId = original.id;
+    this.logger.info('SalesService', 'SALE_REISSUED', 'Venta reemitida', {
+      originalSaleId: id,
+      saleId: sale.id,
+      companyId,
+      userId: actor.userId,
+    });
+    return { replayed: false, sale: serializeSale(sale) };
+  }
+
+  /** Marca la venta como anulada, devuelve el stock y deja la traza (misma transacción). */
+  private async voidInTx(
+    tx: Prisma.TransactionClient,
+    sale: SaleToVoid,
+    reason: string,
+    companyId: string,
+    actor: AuthUser,
+  ) {
+    // Solo una anulación gana si dos administradores actúan a la vez.
+    const res = await tx.sale.updateMany({
+      where: { id: sale.id, companyId, status: 'CONFIRMED' },
+      data: {
+        status: 'VOIDED',
+        voidedAt: new Date(),
+        voidedById: actor.userId,
+        voidReason: reason,
+      },
+    });
+    if (res.count === 0)
+      throw new ConflictException('La venta ya está anulada');
+
+    const returned = new Map<string, Prisma.Decimal>();
+    for (const it of sale.items) {
+      const prev = returned.get(it.productId) ?? new Prisma.Decimal(0);
+      returned.set(it.productId, prev.add(it.quantity));
+    }
+    for (const [productId, qty] of returned) {
+      await tx.product.update({
+        where: { id: productId },
+        data: { stock: { increment: qty }, updatedById: actor.userId },
+      });
+    }
+    await tx.inventoryMovement.createMany({
+      data: [...returned].map(([productId, qty]) => ({
+        companyId,
+        productId,
+        type: 'VOID_RETURN' as const,
+        quantity: qty,
+        userId: actor.userId,
+        saleId: sale.id,
+        reason,
+      })),
+    });
+    // Una solicitud de corrección pendiente queda resuelta con la anulación.
+    await tx.saleCorrectionRequest.updateMany({
+      where: { saleId: sale.id, status: 'PENDING' },
+      data: {
+        status: 'APPROVED',
+        resolvedById: actor.userId,
+        resolvedAt: new Date(),
+        resolution: `Venta anulada: ${reason}`,
+      },
+    });
+    await this.audit.record(
+      actor,
+      {
+        companyId,
+        action: 'SALE_VOIDED',
+        entity: 'Sale',
+        entityId: sale.id,
+        before: {
+          status: 'CONFIRMED',
+          invoiceNumber: sale.invoiceNumber,
+          total: sale.total,
+        },
+        after: { status: 'VOIDED' },
+        reason,
+      },
+      tx,
+    );
+  }
+
+  private async loadSale(
+    id: string,
+    companyId: string,
+    actor: AuthUser,
+  ): Promise<SaleToVoid> {
+    const found = await this.prisma.sale.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    const sale = assertSameCompany(
+      found,
+      companyId,
+      this.logger,
+      { entity: 'Sale', id, userId: actor.userId },
+      'Venta no encontrada',
+    );
+    if (sale.status === 'VOIDED')
+      throw new ConflictException('La venta ya está anulada');
+    return sale;
   }
 }

@@ -1,3 +1,4 @@
+import { AuditService } from '../audit/audit.service';
 import {
   BadRequestException,
   ConflictException,
@@ -52,7 +53,11 @@ describe('SalesService.confirm — caja blanca', () => {
       $queryRaw: queryRaw,
       sale: { findUnique: saleFindUnique },
     } as unknown as PrismaService;
-    service = new SalesService(prisma, logger as unknown as AppLogger);
+    service = new SalesService(
+      prisma,
+      logger as unknown as AppLogger,
+      { record: jest.fn() } as unknown as AuditService,
+    );
   });
 
   it('camino D: stock 10, vender 3 → una lectura y una escritura, total 7500 con precio aplicado (TC-SALE-001)', async () => {
@@ -219,6 +224,7 @@ describe('SalesService — lectura por empresa y vendedor', () => {
     service = new SalesService(
       { sale: { findUnique, findMany } } as unknown as PrismaService,
       logger as unknown as AppLogger,
+      { record: jest.fn() } as unknown as AuditService,
     );
   });
 
