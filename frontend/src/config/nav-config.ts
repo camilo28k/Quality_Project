@@ -1,5 +1,7 @@
 import {
   IconCategory,
+  IconChecklist,
+  IconFileSearch,
   IconHistory,
   IconLayoutDashboard,
   IconPackage,
@@ -27,7 +29,9 @@ export const navItems: NavItem[] = [
   { title: 'Ventas', url: '/dashboard/ventas', icon: IconHistory, roles: ['ADMIN', 'SELLER'] },
   { title: 'Productos', url: '/dashboard/productos', icon: IconPackage, roles: ['ADMIN', 'SELLER'] },
   { title: 'Categorías', url: '/dashboard/categorias', icon: IconCategory, roles: ['ADMIN'] },
+  { title: 'Revisión', url: '/dashboard/revision', icon: IconChecklist, roles: ['ADMIN'] },
   { title: 'Vendedores', url: '/dashboard/vendedores', icon: IconUsers, roles: ['ADMIN'] },
+  { title: 'Auditoría', url: '/dashboard/auditoria', icon: IconFileSearch, roles: ['ADMIN'] },
   { title: 'Configuración', url: '/dashboard/configuracion', icon: IconSettings, roles: ['ADMIN'] }
 ];
 

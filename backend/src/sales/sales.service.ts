@@ -74,6 +74,7 @@ export class SalesService {
    * 2) una sola sentencia atómica que descuenta el stock y registra venta,
    *    líneas y movimientos (SWR-SALE-005/008), o no hace nada.
    * Reglas: SWR-SALE-003/004/007, SWR-SALE-010, SWR-MED-002, SWR-PAY-001.
+   * Un producto pendiente de aprobación (creado por un vendedor) no se vende.
    * Multiempresa: solo se venden productos de la empresa del vendedor y la clave de
    * idempotencia es única por empresa (SWR-TEN-001).
    */
@@ -155,7 +156,7 @@ export class SalesService {
         COALESCE((
           SELECT json_agg(json_build_object(
             'id', p."id", 'name', p."name", 'unit', p."unit", 'price', p."price",
-            'stock', p."stock", 'active', p."active"))
+            'stock', p."stock", 'active', p."active" AND p."approved"))
           FROM "Product" p WHERE p."id" = ANY(${ids}::text[]) AND p."companyId" = ${companyId}
         ), '[]'::json) AS "products"`;
     const row = rows[0];
@@ -200,7 +201,7 @@ export class SalesService {
       upd AS (
         UPDATE "Product" p SET "stock" = p."stock" - d.qty, "updatedAt" = now()
         FROM d JOIN locked ON locked."id" = d.product_id
-        WHERE p."id" = d.product_id AND p."companyId" = ${companyId} AND p."active" AND p."stock" >= d.qty
+        WHERE p."id" = d.product_id AND p."companyId" = ${companyId} AND p."active" AND p."approved" AND p."stock" >= d.qty
         RETURNING p."id"
       ),
       guard AS MATERIALIZED (

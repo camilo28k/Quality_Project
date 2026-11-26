@@ -1,3 +1,4 @@
+import { AuditService } from '../audit/audit.service';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UserStatusCache } from '../auth/user-status-cache';
@@ -16,6 +17,8 @@ describe('UsersService', () => {
   let cache: { invalidate: jest.Mock };
   let logger: { info: jest.Mock; warn: jest.Mock };
   let service: UsersService;
+  let audit: { record: jest.Mock };
+  const ADMIN = { userId: 'u-a', role: 'ADMIN' as const, companyId: 'co1' };
 
   beforeEach(() => {
     user = {
@@ -33,11 +36,15 @@ describe('UsersService', () => {
       findMany: jest.fn().mockResolvedValue([]),
     };
     cache = { invalidate: jest.fn() };
+    audit = { record: jest.fn() };
     logger = { info: jest.fn(), warn: jest.fn() };
+    const prisma = { user } as Record<string, unknown>;
+    prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
     service = new UsersService(
-      { user } as unknown as PrismaService,
+      prisma as unknown as PrismaService,
       logger as unknown as AppLogger,
       cache as unknown as UserStatusCache,
+      audit as unknown as AuditService,
     );
   });
 
@@ -45,7 +52,7 @@ describe('UsersService', () => {
     await service.createSeller(
       { name: 'Ana', email: 'ana@t.test', temporaryPassword: 'Temporal-12345' },
       'co1',
-      'u-a',
+      ADMIN,
     );
     const data = user.create.mock.calls[0][0].data;
     expect(data).toMatchObject({
@@ -70,7 +77,7 @@ describe('UsersService', () => {
       service.createSeller(
         { name: 'Ana', email: 'a@t.test', temporaryPassword: 'Temporal-12345' },
         'co1',
-        'u-a',
+        ADMIN,
       ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
@@ -86,7 +93,7 @@ describe('UsersService', () => {
       role: 'SELLER',
       companyId: 'co1',
     });
-    await service.setSellerActive('v1', false, 'co1', 'u-a');
+    await service.setSellerActive('v1', false, 'co1', ADMIN);
     expect(user.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { active: false } }),
     );
@@ -100,7 +107,7 @@ describe('UsersService', () => {
       companyId: 'co2',
     });
     await expect(
-      service.setSellerActive('v9', false, 'co1', 'u-a'),
+      service.setSellerActive('v9', false, 'co1', ADMIN),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(user.update).not.toHaveBeenCalled();
     expect(JSON.stringify(logger.warn.mock.calls)).toContain('CROSS_TENANT');
@@ -113,7 +120,7 @@ describe('UsersService', () => {
       companyId: 'co1',
     });
     await expect(
-      service.updateSeller('a2', { name: 'x' }, 'co1', 'u-a'),
+      service.updateSeller('a2', { name: 'x' }, 'co1', ADMIN),
     ).rejects.toBeInstanceOf(NotFoundException);
     user.findUnique.mockResolvedValueOnce({
       id: 'sa',
@@ -121,7 +128,7 @@ describe('UsersService', () => {
       companyId: null,
     });
     await expect(
-      service.setSellerActive('sa', false, 'co1', 'u-a'),
+      service.setSellerActive('sa', false, 'co1', ADMIN),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(user.update).not.toHaveBeenCalled();
   });

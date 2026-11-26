@@ -63,6 +63,11 @@ export function ProductForm({ categories, onCreated }: { categories: Category[];
       <FieldGroup>
         {field('name', 'Nombre', <Input id='product-name' name='name' maxLength={120} aria-invalid={!!errors.name} />)}
         {field(
+          'description',
+          'Descripción (opcional)',
+          <Input id='product-description' name='description' maxLength={500} aria-invalid={!!errors.description} />
+        )}
+        {field(
           'categoryId',
           'Categoría',
           <NativeSelect id='product-categoryId' name='categoryId' defaultValue='' className='w-full' aria-invalid={!!errors.categoryId}>
