@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
@@ -8,7 +8,10 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
+import { UserStatusCache } from './user-status-cache';
+import { TenantAccessGuard } from '../tenancy/tenant-access.guard';
 
+@Global()
 @Module({
   imports: [
     PassportModule,
@@ -26,9 +29,13 @@ import { RolesGuard } from './roles.guard';
   providers: [
     AuthService,
     JwtStrategy,
+    // Una sola instancia: la estrategia lee y los servicios de usuarios/empresas la invalidan.
+    { provide: UserStatusCache, useFactory: () => new UserStatusCache() },
     // Orden: primero autenticación, luego autorización por rol (validación en servidor, SWR-SEC-003).
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: TenantAccessGuard },
   ],
+  exports: [UserStatusCache],
 })
 export class AuthModule {}
