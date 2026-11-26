@@ -77,7 +77,7 @@ describe('JwtAuthGuard.handleRequest (MEJ-01, H-SR-02)', () => {
       new Reflector(),
       logger as unknown as AppLogger,
     );
-    const user = { userId: 'u1', role: 'ADMIN' as const };
+    const user = { userId: 'u1', role: 'ADMIN' as const, companyId: 'co1' };
 
     expect(guard.handleRequest(null, user, undefined, context)).toBe(user);
     expect(logger.warn).not.toHaveBeenCalled();

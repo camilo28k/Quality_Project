@@ -17,6 +17,8 @@ export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
 export interface AuthUser {
   userId: string;
   role: Role;
+  /** Empresa del usuario; null solo para SUPER_ADMIN (SWR-TEN-001). */
+  companyId: string | null;
 }
 
 export const CurrentUser = createParamDecorator(
