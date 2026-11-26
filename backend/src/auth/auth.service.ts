@@ -1,9 +1,14 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Role } from '@prisma/client';
 import { AppLogger } from '../common/logger/app-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { verifyPassword } from './password.util';
+import { hashPassword, verifyPassword } from './password.util';
+import { UserStatusCache } from './user-status-cache';
 
 export const INVALID_CREDENTIALS = 'Correo o contraseña incorrectos';
 
@@ -25,7 +30,51 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly logger: AppLogger,
+    private readonly cache: UserStatusCache,
   ) {}
+
+  /**
+   * SWR-ONB-001: cambio de contraseña (obligatorio si es temporal, voluntario siempre).
+   * Exige la contraseña actual y que la nueva sea distinta.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ changed: true }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { passwordHash: true },
+    });
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+      this.logger.warn(
+        'AuthService',
+        'AUTH_PASSWORD_CHANGE_FAILED',
+        'Cambio de contraseña rechazado',
+        { userId, reason: 'BAD_CURRENT_PASSWORD' },
+      );
+      throw new BadRequestException(['La contraseña actual no es correcta']);
+    }
+    if (currentPassword === newPassword)
+      throw new BadRequestException([
+        'La nueva contraseña debe ser distinta de la actual',
+      ]);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await hashPassword(newPassword),
+        mustChangePassword: false,
+      },
+    });
+    this.cache.invalidate(userId);
+    this.logger.info(
+      'AuthService',
+      'AUTH_PASSWORD_CHANGED',
+      'Contraseña cambiada',
+      { userId },
+    );
+    return { changed: true };
+  }
 
   /**
    * SWR-AUTH-001: inicia sesión con correo y contraseña de una cuenta activa.
@@ -104,7 +153,9 @@ export class AuthService {
         role: true,
         companyId: true,
         mustChangePassword: true,
-        company: { select: { id: true, tradeName: true } },
+        company: {
+          select: { id: true, tradeName: true, onboardingCompleted: true },
+        },
       },
     });
   }

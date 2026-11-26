@@ -33,7 +33,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload): Promise<AuthUser> {
     const user = await this.cache.get(payload.sub, (id) => this.load(id));
     if (!canOperate(user)) throw new UnauthorizedException('Sesión no válida');
-    return { userId: user.id, role: user.role, companyId: user.companyId };
+    return {
+      userId: user.id,
+      role: user.role,
+      companyId: user.companyId,
+      mustChangePassword: user.mustChangePassword,
+      onboardingCompleted: user.onboardingCompleted,
+    };
   }
 
   private async load(id: string): Promise<UserStatus | null> {
@@ -44,7 +50,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         active: true,
         companyId: true,
-        company: { select: { active: true } },
+        mustChangePassword: true,
+        company: { select: { active: true, onboardingCompleted: true } },
       },
     });
     if (!u) return null;
@@ -54,6 +61,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       active: u.active,
       companyId: u.companyId,
       companyActive: u.company?.active ?? u.role === 'SUPER_ADMIN',
+      mustChangePassword: u.mustChangePassword,
+      onboardingCompleted: u.company?.onboardingCompleted ?? true,
     };
   }
 }

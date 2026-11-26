@@ -37,3 +37,27 @@ Requisitos: SWR-TEN-001, SWR-TEN-002, SWR-TEN-003, SWR-ROLE-001, SWR-ROLE-002 (e
 - **Repetir los tiempos en Supabase.** Los tiempos medidos aquí son con BD local y no reemplazan la medición de FAL-01 contra Supabase (~580 ms por ida y vuelta).
 - **Frontend sin cambios en esta parte.** No hay pantallas de empresas ni de vendedores (Fase 3). Playwright no se volvió a ejecutar.
 - **Auditoría persistente (`AuditLog`):** llega en la parte 3. Por ahora las acciones quedan en los logs estructurados.
+
+## Migración aplicada en Supabase (2026-11-26)
+| Dato | Antes | Después |
+|---|---|---|
+| Usuarios / categorías / productos | 6 / 74 / 182 | 6 / 74 / 182 |
+| Ventas / líneas / movimientos | 323 / 416 / 593 | 323 / 416 / 593 |
+| Stock total / total vendido | 29844,250 / $812.600 | 29844,250 / $812.600 |
+| Filas sin `companyId` | — | 0 en todas las tablas |
+| Empresas | — | 1 (empresa inicial) |
+
+`prisma migrate status`: al día. `migrate diff` contra el esquema: sin diferencias.
+
+### Re-medición de FAL-01 contra Supabase
+| Prueba | Resultado |
+|---|---|
+| Carrera 3 y 10 compradores | PASS (1 venta, stock final 0) |
+| 40 ventas secuenciales | **32/40 ≤ 2 s** (mediana 1748 ms, p95 2724 ms) |
+| 20 ventas concurrentes | **7/20 ≤ 2 s** (mediana 2321 ms, p95 3669 ms) |
+| Ida y vuelta `SELECT 1` medida el mismo día | mín 567 ms · **mediana 801 ms** · máx 1032 ms |
+
+**Análisis.**
+- La venta sigue haciendo 2 idas y vueltas a la BD; la prueba de caja blanca del camino D lo verifica.
+- La mediana de la venta (1748 ms) equivale a unas 2,2 veces la ida y vuelta medida hoy (801 ms), frente a los ~580 ms medidos cuando se cerró FAL-01.
+- La degradación es consistente con una red o un pooler más lentos ese día, no con consultas adicionales. Aun así, **no se puede afirmar que FAL-01 se cumpla hoy contra Supabase**: queda como observación abierta (OBS-MT-01) hasta repetir la medición en otro momento o con la BD en una región más cercana.

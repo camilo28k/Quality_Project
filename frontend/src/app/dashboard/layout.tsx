@@ -2,6 +2,7 @@ import AppSidebar from '@/components/layout/app-sidebar';
 import Header from '@/components/layout/header';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { getSessionUser } from '@/lib/session';
+import { pendingPath } from '@/lib/session-types';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
@@ -9,6 +10,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // El proxy solo revisa que exista la cookie; aquí se confirma con el backend.
   const user = await getSessionUser();
   if (!user) redirect('/login');
+  // Contraseña temporal o empresa sin configurar: primero ese paso (SWR-ONB-001).
+  const pending = pendingPath(user);
+  if (pending) redirect(pending);
 
   const defaultOpen = (await cookies()).get('sidebar_state')?.value !== 'false';
   return (
