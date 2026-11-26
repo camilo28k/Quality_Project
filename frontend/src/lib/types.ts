@@ -4,6 +4,8 @@ export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER';
 export interface Category {
   id: string;
   name: string;
+  active?: boolean;
+  _count?: { products: number };
 }
 
 export interface Product {
@@ -18,6 +20,10 @@ export interface Product {
   minStock: number;
   active: boolean;
   lowStock: boolean;
+  description?: string | null;
+  /** false: lo creó un vendedor y espera aprobación del ADMIN (no se vende). */
+  approved?: boolean;
+  createdById?: string | null;
 }
 
 export interface SaleItem {

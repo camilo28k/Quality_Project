@@ -1,3 +1,4 @@
+import { AuditService } from '../audit/audit.service';
 import {
   BadRequestException,
   ConflictException,
@@ -66,12 +67,20 @@ describe('CatalogService', () => {
         ),
         findMany: jest.fn().mockResolvedValue([]),
       },
-      $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
+      // La transacción expone los mocks de prisma y los de tx (producto y movimiento).
+      $transaction: jest.fn((fn: (t: unknown) => unknown) =>
+        fn({
+          ...prisma,
+          product: { ...prisma.product, ...tx.product },
+          inventoryMovement: tx.inventoryMovement,
+        }),
+      ),
     };
     logger = { info: jest.fn(), warn: jest.fn() };
     service = new CatalogService(
       prisma as unknown as PrismaService,
       logger as unknown as AppLogger,
+      { record: jest.fn() } as unknown as AuditService,
     );
   });
 
