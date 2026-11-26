@@ -34,7 +34,7 @@ export class PlatformController {
 
   @Post()
   create(@Body() dto: CreateCompanyDto, @CurrentUser() user: AuthUser) {
-    return this.platform.createCompany(dto, user.userId);
+    return this.platform.createCompany(dto, user);
   }
 
   @Patch(':id')
@@ -43,7 +43,7 @@ export class PlatformController {
     @Body() dto: UpdateCompanyDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.platform.updateCompany(id, dto, user.userId);
+    return this.platform.updateCompany(id, dto, user);
   }
 
   @Patch(':id/deactivate')
@@ -51,7 +51,7 @@ export class PlatformController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.platform.setCompanyActive(id, false, user.userId);
+    return this.platform.setCompanyActive(id, false, user);
   }
 
   @Patch(':id/activate')
@@ -59,7 +59,7 @@ export class PlatformController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.platform.setCompanyActive(id, true, user.userId);
+    return this.platform.setCompanyActive(id, true, user);
   }
 
   @Post(':id/admin')
@@ -68,6 +68,6 @@ export class PlatformController {
     @Body() dto: CreateCompanyAdminDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.platform.createCompanyAdmin(id, dto, user.userId);
+    return this.platform.createCompanyAdmin(id, dto, user);
   }
 }

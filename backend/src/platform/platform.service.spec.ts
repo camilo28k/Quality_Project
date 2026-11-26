@@ -1,3 +1,4 @@
+import { AuditService } from '../audit/audit.service';
 import { NotFoundException } from '@nestjs/common';
 import { UserStatusCache } from '../auth/user-status-cache';
 import { AppLogger } from '../common/logger/app-logger.service';
@@ -15,6 +16,8 @@ describe('PlatformService', () => {
   let user: { create: jest.Mock };
   let cache: { invalidateCompany: jest.Mock };
   let service: PlatformService;
+  let audit: { record: jest.Mock };
+  const SA = { userId: 'sa', role: 'SUPER_ADMIN' as const, companyId: null };
 
   beforeEach(() => {
     company = {
@@ -33,35 +36,48 @@ describe('PlatformService', () => {
         ),
     };
     cache = { invalidateCompany: jest.fn() };
+    audit = { record: jest.fn() };
+    const prisma = { company, user } as Record<string, unknown>;
+    prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
     service = new PlatformService(
-      { company, user } as unknown as PrismaService,
+      prisma as unknown as PrismaService,
       { info: jest.fn(), warn: jest.fn() } as unknown as AppLogger,
       cache as unknown as UserStatusCache,
+      audit as unknown as AuditService,
     );
   });
 
   it('la empresa nueva se crea solo con el nombre y queda con el asistente pendiente (default de la BD)', async () => {
-    await service.createCompany({ tradeName: 'Tienda Ana' }, 'sa');
+    await service.createCompany({ tradeName: 'Tienda Ana' }, SA);
     expect(company.create.mock.calls[0][0].data).toEqual({
       tradeName: 'Tienda Ana',
     });
   });
 
   it('desactivar una empresa invalida al momento las sesiones de sus usuarios', async () => {
-    await service.setCompanyActive('co1', false, 'sa');
+    await service.setCompanyActive('co1', false, SA);
     expect(company.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { active: false } }),
     );
     expect(cache.invalidateCompany).toHaveBeenCalledWith('co1');
+    expect(audit.record).toHaveBeenCalledWith(
+      SA,
+      expect.objectContaining({
+        action: 'COMPANY_DEACTIVATED',
+        before: { active: undefined },
+        after: { active: false },
+      }),
+      expect.anything(),
+    );
   });
 
   it('cambiar el correo de la empresa obliga a verificarlo de nuevo', async () => {
-    await service.updateCompany('co1', { email: 'nuevo@e.test' }, 'sa');
+    await service.updateCompany('co1', { email: 'nuevo@e.test' }, SA);
     expect(company.update.mock.calls[0][0].data).toEqual({
       email: 'nuevo@e.test',
       emailVerifiedAt: null,
     });
-    await service.updateCompany('co1', { email: 'old@e.test' }, 'sa');
+    await service.updateCompany('co1', { email: 'old@e.test' }, SA);
     expect(company.update.mock.calls[1][0].data).toEqual({
       email: 'old@e.test',
     });
@@ -71,7 +87,7 @@ describe('PlatformService', () => {
     await service.createCompanyAdmin(
       'co1',
       { name: 'Ana', email: 'ana@e.test', temporaryPassword: 'Temporal-12345' },
-      'sa',
+      SA,
     );
     expect(user.create.mock.calls[0][0].data).toMatchObject({
       companyId: 'co1',
@@ -83,7 +99,7 @@ describe('PlatformService', () => {
   it('una empresa inexistente responde 404', async () => {
     company.findUnique.mockResolvedValue(null);
     await expect(
-      service.setCompanyActive('x', false, 'sa'),
+      service.setCompanyActive('x', false, SA),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(company.update).not.toHaveBeenCalled();
   });

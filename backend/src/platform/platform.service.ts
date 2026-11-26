@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AuditService, changedFields } from '../audit/audit.service';
+import type { AuthUser } from '../auth/decorators';
 import { hashPassword } from '../auth/password.util';
 import { UserStatusCache } from '../auth/user-status-cache';
 import { AppLogger } from '../common/logger/app-logger.service';
@@ -39,6 +41,7 @@ export class PlatformService {
     private readonly prisma: PrismaService,
     private readonly logger: AppLogger,
     private readonly cache: UserStatusCache,
+    private readonly audit: AuditService,
   ) {}
 
   listCompanies() {
@@ -68,10 +71,25 @@ export class PlatformService {
     return company;
   }
 
-  async createCompany(dto: CreateCompanyDto, actorId: string) {
-    const company = await this.prisma.company.create({
-      data: { tradeName: dto.tradeName },
-      select: COMPANY_SUMMARY,
+  async createCompany(dto: CreateCompanyDto, actor: AuthUser) {
+    const actorId = actor.userId;
+    const company = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.company.create({
+        data: { tradeName: dto.tradeName },
+        select: COMPANY_SUMMARY,
+      });
+      await this.audit.record(
+        actor,
+        {
+          companyId: created.id,
+          action: 'COMPANY_CREATED',
+          entity: 'Company',
+          entityId: created.id,
+          after: { tradeName: created.tradeName },
+        },
+        tx,
+      );
+      return created;
     });
     this.logger.info('PlatformService', 'COMPANY_CREATED', 'Empresa creada', {
       companyId: company.id,
@@ -80,14 +98,31 @@ export class PlatformService {
     return company;
   }
 
-  async updateCompany(id: string, dto: UpdateCompanyDto, actorId: string) {
+  async updateCompany(id: string, dto: UpdateCompanyDto, actor: AuthUser) {
+    const actorId = actor.userId;
     const current = await this.getCompany(id);
     const emailChanged = dto.email !== undefined && dto.email !== current.email;
-    const company = await this.prisma.company.update({
-      where: { id },
-      // Un correo nuevo debe volver a verificarse antes de usarse en facturas (SWR-MAIL-001).
-      data: { ...dto, ...(emailChanged ? { emailVerifiedAt: null } : {}) },
-      select: COMPANY_SUMMARY,
+    const data = { ...dto, ...(emailChanged ? { emailVerifiedAt: null } : {}) };
+    const company = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id },
+        // Un correo nuevo debe volver a verificarse antes de usarse en facturas (SWR-MAIL-001).
+        data,
+        select: COMPANY_SUMMARY,
+      });
+      const diff = changedFields(current, data);
+      await this.audit.record(
+        actor,
+        {
+          companyId: id,
+          action: 'COMPANY_UPDATED',
+          entity: 'Company',
+          entityId: id,
+          ...diff,
+        },
+        tx,
+      );
+      return updated;
     });
     this.logger.info(
       'PlatformService',
@@ -103,12 +138,28 @@ export class PlatformService {
   }
 
   /** SWR-TEN-003: desactivar impide iniciar sesión a sus usuarios; los datos se conservan. */
-  async setCompanyActive(id: string, active: boolean, actorId: string) {
-    await this.getCompany(id);
-    const company = await this.prisma.company.update({
-      where: { id },
-      data: { active },
-      select: COMPANY_SUMMARY,
+  async setCompanyActive(id: string, active: boolean, actor: AuthUser) {
+    const actorId = actor.userId;
+    const current = await this.getCompany(id);
+    const company = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id },
+        data: { active },
+        select: COMPANY_SUMMARY,
+      });
+      await this.audit.record(
+        actor,
+        {
+          companyId: id,
+          action: active ? 'COMPANY_ACTIVATED' : 'COMPANY_DEACTIVATED',
+          entity: 'Company',
+          entityId: id,
+          before: { active: current.active },
+          after: { active },
+        },
+        tx,
+      );
+      return updated;
     });
     // Las sesiones abiertas de la empresa dejan de valer de inmediato, no a los 30 s.
     this.cache.invalidateCompany(id);
@@ -124,20 +175,45 @@ export class PlatformService {
   async createCompanyAdmin(
     companyId: string,
     dto: CreateCompanyAdminDto,
-    actorId: string,
+    actor: AuthUser,
   ) {
+    const actorId = actor.userId;
     await this.getCompany(companyId);
     try {
-      const user = await this.prisma.user.create({
-        data: {
-          companyId,
-          name: dto.name,
-          email: dto.email,
-          role: 'ADMIN',
-          passwordHash: await hashPassword(dto.temporaryPassword),
-          mustChangePassword: true,
-        },
-        select: { id: true, name: true, email: true, role: true, active: true },
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            companyId,
+            name: dto.name,
+            email: dto.email,
+            role: 'ADMIN',
+            passwordHash: await hashPassword(dto.temporaryPassword),
+            mustChangePassword: true,
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            active: true,
+          },
+        });
+        await this.audit.record(
+          actor,
+          {
+            companyId,
+            action: 'USER_CREATED',
+            entity: 'User',
+            entityId: created.id,
+            after: {
+              name: created.name,
+              email: created.email,
+              role: created.role,
+            },
+          },
+          tx,
+        );
+        return created;
       });
       this.logger.info(
         'PlatformService',

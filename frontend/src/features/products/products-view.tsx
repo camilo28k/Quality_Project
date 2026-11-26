@@ -1,28 +1,23 @@
 'use client';
 
 import { LoadError, LoadingRows } from '@/components/load-states';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { api, ApiError, apiFetch } from '@/lib/api';
+import { api } from '@/lib/api';
+import type { Role } from '@/lib/session-types';
 import type { Category, Product } from '@/lib/types';
 import { useApiData } from '@/lib/use-api-data';
-import { toast } from 'sonner';
 import { ProductForm } from './product-form';
 import { ProductList } from './product-list';
 
-/** SWR-PROD-001 y SWR-PROD-005 (adaptado de product-listing de la plantilla). */
-export function ProductsView({ isAdmin }: { isAdmin: boolean }) {
+/**
+ * SWR-PROD-001/005 y SWR-ROLE-003: el ADMIN y el vendedor registran productos
+ * (los del vendedor quedan pendientes de aprobación); las acciones dependen del rol.
+ */
+export function ProductsView({ role }: { role: Role }) {
+  const isAdmin = role !== 'SELLER';
   const products = useApiData<Product[]>(api(`products${isAdmin ? '?includeInactive=true' : ''}`));
   const categories = useApiData<Category[]>(api('categories'));
-
-  async function deactivate(p: Product) {
-    try {
-      await apiFetch(api(`products/${p.id}/deactivate`), { method: 'PATCH' });
-      toast.success(`«${p.name}» desactivado`);
-      await products.reload();
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'No se pudo desactivar');
-    }
-  }
 
   const list =
     products.loading && !products.data ? (
@@ -30,10 +25,8 @@ export function ProductsView({ isAdmin }: { isAdmin: boolean }) {
     ) : products.error ? (
       <LoadError message={products.error} onRetry={products.reload} />
     ) : (
-      <ProductList products={products.data ?? []} canManage={isAdmin} onDeactivate={deactivate} />
+      <ProductList products={products.data ?? []} role={role} onChanged={products.reload} />
     );
-
-  if (!isAdmin) return list;
 
   return (
     <div className='grid gap-4 2xl:grid-cols-[26rem_1fr]'>
@@ -41,11 +34,18 @@ export function ProductsView({ isAdmin }: { isAdmin: boolean }) {
         <CardHeader>
           <CardTitle>Nuevo producto</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className='space-y-4'>
+          {!isAdmin && (
+            <Alert>
+              <AlertDescription>
+                El producto quedará pendiente hasta que el administrador lo apruebe y confirme el precio.
+              </AlertDescription>
+            </Alert>
+          )}
           <ProductForm categories={categories.data ?? []} onCreated={() => void products.reload()} />
         </CardContent>
       </Card>
-      <div className='min-w-0'>{list}</div>
+      <div className='min-w-0 overflow-x-auto'>{list}</div>
     </div>
   );
 }
