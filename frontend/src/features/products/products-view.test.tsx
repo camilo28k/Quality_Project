@@ -26,9 +26,10 @@ describe('ProductsView', () => {
       'GET /api/backend/products': async () => {
         await pending;
         return { body: [arroz] };
-      }
+      },
+      'GET /api/backend/categories': () => ({ body: [] })
     });
-    render(<ProductsView isAdmin={false} />);
+    render(<ProductsView role='SELLER' />);
 
     expect(screen.getByRole('status', { name: /cargando productos/i })).toBeInTheDocument();
     release();
@@ -39,8 +40,11 @@ describe('ProductsView', () => {
   });
 
   test('RTL-08: muestra mensaje de lista vacía', async () => {
-    mockFetch({ 'GET /api/backend/products': () => ({ body: [] }) });
-    render(<ProductsView isAdmin={false} />);
+    mockFetch({
+      'GET /api/backend/products': () => ({ body: [] }),
+      'GET /api/backend/categories': () => ({ body: [] })
+    });
+    render(<ProductsView role='SELLER' />);
 
     expect(await screen.findByText(/aún no hay productos registrados/i)).toBeVisible();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -52,9 +56,9 @@ describe('ProductsView', () => {
       'GET /api/backend/categories': () => ({ body: [] }),
       'PATCH /api/backend/products/p1/deactivate': () => ({ body: { ...arroz, active: false } })
     });
-    render(<ProductsView isAdmin />);
+    render(<ProductsView role='ADMIN' />);
 
-    await userEvent.click(await screen.findByRole('button', { name: /desactivar/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /^desactivar$/i }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByText(/¿desactivar «arroz»\?/i)).toBeVisible();
     const patchCalls = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'PATCH');
@@ -63,5 +67,42 @@ describe('ProductsView', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: /desactivar/i }));
 
     await vi.waitFor(() => expect(patchCalls()).toHaveLength(1));
+  });
+
+  test('RTL-MT-11: el vendedor ve su producto pendiente y no tiene desactivar ni eliminar (SWR-ROLE-003)', async () => {
+    mockFetch({
+      'GET /api/backend/products': () => ({ body: [{ ...arroz, approved: false }] }),
+      'GET /api/backend/categories': () => ({ body: [] })
+    });
+    render(<ProductsView role='SELLER' />);
+    const row = (await screen.findByRole('cell', { name: /arroz/i })).closest('tr')!;
+    expect(within(row).getByText(/pendiente de aprobación/i)).toBeVisible();
+    expect(within(row).getByRole('button', { name: /editar/i })).toBeVisible();
+    expect(within(row).queryByRole('button', { name: /desactivar|eliminar/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/quedará pendiente hasta que el administrador/i)).toBeVisible();
+  });
+
+  test('RTL-MT-12: la baja de stock exige motivo y envía la cantidad (SWR-STK-001)', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/backend/products?includeInactive=true': () => ({ body: [{ ...arroz, stock: 10 }] }),
+      'GET /api/backend/categories': () => ({ body: [] }),
+      'POST /api/backend/products/p1/stock-adjustments': () => ({ status: 201, body: { ...arroz, stock: 8 } })
+    });
+    render(<ProductsView role='ADMIN' />);
+    await userEvent.click(await screen.findByRole('button', { name: /^stock$/i }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.selectOptions(within(dialog).getByLabelText(/tipo de movimiento/i), 'out');
+    await userEvent.type(within(dialog).getByLabelText(/cantidad/i), '2');
+    await userEvent.click(within(dialog).getByRole('button', { name: /registrar/i }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/motivo es obligatorio/i);
+
+    await userEvent.type(within(dialog).getByLabelText(/motivo/i), 'Empaque roto');
+    await userEvent.click(within(dialog).getByRole('button', { name: /registrar/i }));
+    const post = await vi.waitFor(() => {
+      const c = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+      if (!c) throw new Error('sin POST');
+      return c;
+    });
+    expect(JSON.parse(String(post[1]?.body))).toEqual({ quantity: 2, reason: 'Empaque roto' });
   });
 });

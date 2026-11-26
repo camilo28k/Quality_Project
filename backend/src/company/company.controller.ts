@@ -23,7 +23,7 @@ export class CompanyController {
     @CompanyId() companyId: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.company.completeOnboarding(companyId, dto, user.userId);
+    return this.company.completeOnboarding(companyId, dto, user);
   }
 
   @Roles('ADMIN', 'SUPER_ADMIN')
@@ -33,6 +33,6 @@ export class CompanyController {
     @CompanyId() companyId: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.company.update(companyId, dto, user.userId);
+    return this.company.update(companyId, dto, user);
   }
 }
