@@ -10,6 +10,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 import { UserStatusCache } from './user-status-cache';
 import { TenantAccessGuard } from '../tenancy/tenant-access.guard';
+import { PendingStepsGuard } from './pending-steps.guard';
 
 @Global()
 @Module({
@@ -33,6 +34,7 @@ import { TenantAccessGuard } from '../tenancy/tenant-access.guard';
     { provide: UserStatusCache, useFactory: () => new UserStatusCache() },
     // Orden: primero autenticación, luego autorización por rol (validación en servidor, SWR-SEC-003).
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: PendingStepsGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: TenantAccessGuard },
   ],
