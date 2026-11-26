@@ -58,6 +58,37 @@ Rama: `feature/multiempresa-parte4`. Requisitos: SWR-INV-001, SWR-INV-002, SWR-S
 3. Confirma y aparece **DR-102 «Corrige DR-100»** a nombre de Carlos. DR-100 queda «Anulada · Reemitida como DR-102».
 4. La factura DR-100 muestra el sello «FACTURA ANULADA · Eran 3 gaseosas, no 5 · Reemplazada por DR-102», con los datos de la empresa, el NIT, el vendedor y el cliente.
 
+## Migración aplicada en Supabase (2026-11-26)
+| Dato | Antes | Después |
+|---|---|---|
+| Usuarios / categorías / productos | 6 / 84 / 260 | 6 / 84 / 260 |
+| Ventas / líneas / movimientos | 545 / 718 / 973 | 545 / 718 / 973 |
+| Stock total / total vendido | 51524,250 / $1.134.600 | 51524,250 / $1.134.600 |
+| Numeración | — | 545 ventas FAC-1..FAC-545, 545 números distintos, 0 sin número, siguiente FAC-546 |
+
+`prisma migrate status`: al día. `migrate diff`: sin diferencias.
+
+## Medición de FAL-01 contra Supabase con el código de la parte 4
+Ida y vuelta `SELECT 1` el mismo día: mín 513 ms · mediana 551 ms · máx 674 ms.
+
+| Ventas simultáneas en **la misma empresa** (productos distintos) | ≤ 2 s | Detalle |
+|---|---|---|
+| 1 (40 secuenciales) | **40/40** | mediana 1191 ms · p95 1286 ms |
+| 3 (3 corridas) | **3/3 · 3/3 · 3/3** | máx 1419 ms |
+| 5 (3 corridas) | **5/5 · 5/5 · 5/5** | máx 1576 ms |
+| 20 (3 corridas) | **3/20 · 6/20 · 1/20** | mediana 2,4–3,0 s |
+| Carrera por la última unidad | PASS | — |
+
+Antes de la parte 4 (código de `main`), las 20 simultáneas dieron 20/20 · 20/20 · 10/20.
+
+### DEF-MT-02 / DEC-MT-01: el consecutivo sin huecos serializa las ventas de una empresa
+- **Hallazgo:** para garantizar facturas sin huecos ni duplicados, cada venta toma la fila del contador de su empresa hasta confirmar. Con la latencia de confirmación de Supabase, cada venta simultánea de la **misma** empresa agrega unos 120 ms a las demás. El límite práctico ronda las **7 ventas exactamente simultáneas por empresa**. Las ventas de empresas distintas no se afectan entre sí.
+- **Alternativa evaluada:** un contador no transaccional (secuencia) recupera el paralelismo, pero deja **huecos** en la numeración cuando una venta se rechaza o se repite.
+- **Decisión del usuario (2026-11-26): mantener el consecutivo sin huecos.**
+  - **Motivos:** orden contable y facilidad de auditoría de la numeración (DIAN).
+  - **Contexto:** el escenario objetivo es una tienda pequeña de 1 a 3 cajas, donde se cumple con margen (3/3 y 5/5).
+  - **Clasificación:** limitación conocida y aceptada, no defecto abierto.
+  - **Mitigación futura** si una empresa necesitara más de unas 7 cajas simultáneas: numeración por punto de venta (un contador por caja, con prefijo propio), que reparte la espera.
+
 ## Pendiente
-- Aplicar la migración en Supabase y **medir FAL-01 allí**. El consecutivo bloquea brevemente la fila de la empresa dentro de la misma sentencia, y hay que comprobar que no empeora los tiempos.
 - Enviar la factura por correo (parte 5).
