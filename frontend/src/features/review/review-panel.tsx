@@ -10,8 +10,16 @@ import { api, ApiError, apiFetch } from '@/lib/api';
 import { formatCOP, formatDateTime } from '@/lib/format';
 import type { Product } from '@/lib/types';
 import { useApiData } from '@/lib/use-api-data';
+import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
+
+interface Correction {
+  id: string;
+  reason: string;
+  requestedByName: string | null;
+  sale: { id: string; invoiceNumber: string; total: number };
+}
 
 interface Review {
   pendingProducts: (Product & { createdByName: string | null })[];
@@ -37,12 +45,13 @@ interface Review {
 /** Panel de revisión del ADMIN (decisión a): productos y precios propuestos por vendedores. */
 export function ReviewPanel() {
   const { data, error, loading, reload } = useApiData<Review>(api('review'));
+  const corrections = useApiData<Correction[]>(api('correction-requests'));
 
   async function run(path: string, ok: string, body: unknown = {}) {
     try {
       await apiFetch(api(path), { method: 'POST', body });
       toast.success(ok);
-      await reload();
+      await Promise.all([reload(), corrections.reload()]);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'No se pudo completar la operación');
     }
@@ -54,6 +63,57 @@ export function ReviewPanel() {
 
   return (
     <div className='space-y-4'>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            Correcciones de ventas pedidas <Badge variant='secondary'>{corrections.data?.length ?? 0}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className='overflow-x-auto'>
+          {!corrections.data?.length ? (
+            <EmptyState
+              title='Sin correcciones'
+              description='Cuando un vendedor pida corregir una venta aparecerá aquí. Se resuelve anulando o reemitiendo en Ventas.'
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Factura</TableHead>
+                  <TableHead>Vendedor</TableHead>
+                  <TableHead>Motivo</TableHead>
+                  <TableHead className='sr-only'>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {corrections.data.map((c) => (
+                  <TableRow key={c.id}>
+                    <TableCell className='font-medium'>
+                      {c.sale.invoiceNumber}
+                      <span className='text-muted-foreground block text-xs'>{formatCOP(c.sale.total)}</span>
+                    </TableCell>
+                    <TableCell>{c.requestedByName}</TableCell>
+                    <TableCell>{c.reason}</TableCell>
+                    <TableCell className='space-x-2 text-right whitespace-nowrap'>
+                      <Button size='sm' render={<Link href={`/dashboard/ventas/${c.sale.id}`} />}>
+                        Ver venta
+                      </Button>
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        onClick={() => run(`correction-requests/${c.id}/reject`, 'Corrección rechazada')}
+                      >
+                        Rechazar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>
