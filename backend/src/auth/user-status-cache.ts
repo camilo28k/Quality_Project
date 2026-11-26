@@ -8,6 +8,10 @@ export interface UserStatus {
   companyId: string | null;
   /** Estado de la empresa; true para el SUPER_ADMIN, que no tiene empresa. */
   companyActive: boolean;
+  /** Contraseña temporal pendiente de cambio (SWR-ONB-001). */
+  mustChangePassword: boolean;
+  /** Configuración inicial de la empresa completada; true para el SUPER_ADMIN. */
+  onboardingCompleted: boolean;
 }
 
 /** La cuenta puede operar: activa y, si pertenece a una empresa, con la empresa activa (SWR-TEN-003). */
