@@ -12,6 +12,12 @@ const requiredNumber = (label: string) =>
 export const productSchema = z
   .object({
     name: z.string().trim().min(1, 'El nombre es obligatorio').max(120),
+    description: z
+      .string()
+      .trim()
+      .max(500, 'La descripción admite máximo 500 caracteres')
+      .optional()
+      .transform((v) => (v ? v : undefined)),
     categoryId: z.string().min(1, 'La categoría es obligatoria'),
     unit: z.enum(['UNIT', 'KG', 'LB'], { error: 'La unidad es obligatoria' }),
     cost: requiredNumber('El costo')

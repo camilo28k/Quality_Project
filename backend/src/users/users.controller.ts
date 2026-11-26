@@ -29,7 +29,7 @@ export class UsersController {
     @CompanyId() companyId: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.users.createSeller(dto, companyId, user.userId);
+    return this.users.createSeller(dto, companyId, user);
   }
 
   @Patch(':id')
@@ -39,7 +39,7 @@ export class UsersController {
     @CompanyId() companyId: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.users.updateSeller(id, dto, companyId, user.userId);
+    return this.users.updateSeller(id, dto, companyId, user);
   }
 
   @Patch(':id/deactivate')
@@ -48,7 +48,7 @@ export class UsersController {
     @CompanyId() companyId: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.users.setSellerActive(id, false, companyId, user.userId);
+    return this.users.setSellerActive(id, false, companyId, user);
   }
 
   @Patch(':id/activate')
@@ -57,6 +57,6 @@ export class UsersController {
     @CompanyId() companyId: string,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.users.setSellerActive(id, true, companyId, user.userId);
+    return this.users.setSellerActive(id, true, companyId, user);
   }
 }

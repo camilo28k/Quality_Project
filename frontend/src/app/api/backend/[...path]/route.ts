@@ -7,7 +7,7 @@ import { backendUrl, SESSION_COOKIE } from '@/lib/session';
  * desde la cookie httpOnly. El frontend nunca habla con la base de datos.
  */
 // Solo recursos de negocio y el cambio de contraseña; el login/logout tienen su propia ruta.
-const ALLOWED = /^(?:(categories|products|sales|users|company|platform)(\/[\w-]+)*|auth\/change-password)$/;
+const ALLOWED = /^(?:(categories|products|sales|users|company|platform|price-requests|review|audit)(\/[\w-]+)*|auth\/change-password)$/;
 
 async function forward(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const path = (await params).path.join('/');

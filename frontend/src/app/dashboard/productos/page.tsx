@@ -9,7 +9,7 @@ export default async function ProductsPage() {
   const user = (await getSessionUser())!;
   return (
     <PageContainer pageTitle='Productos' pageDescription='Catálogo, precios y existencias.'>
-      <ProductsView isAdmin={user.role === 'ADMIN'} />
+      <ProductsView role={user.role} />
     </PageContainer>
   );
 }

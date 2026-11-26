@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AuditService, changedFields } from '../audit/audit.service';
+import type { AuthUser } from '../auth/decorators';
 import { hashPassword } from '../auth/password.util';
 import { UserStatusCache } from '../auth/user-status-cache';
 import { AppLogger } from '../common/logger/app-logger.service';
@@ -31,6 +33,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly logger: AppLogger,
     private readonly cache: UserStatusCache,
+    private readonly audit: AuditService,
   ) {}
 
   list(companyId: string) {
@@ -41,18 +44,37 @@ export class UsersService {
     });
   }
 
-  async createSeller(dto: CreateSellerDto, companyId: string, actorId: string) {
+  async createSeller(dto: CreateSellerDto, companyId: string, actor: AuthUser) {
+    const actorId = actor.userId;
     try {
-      const user = await this.prisma.user.create({
-        data: {
-          companyId,
-          name: dto.name,
-          email: dto.email,
-          role: 'SELLER',
-          passwordHash: await hashPassword(dto.temporaryPassword),
-          mustChangePassword: true,
-        },
-        select: USER_PUBLIC,
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            companyId,
+            name: dto.name,
+            email: dto.email,
+            role: 'SELLER',
+            passwordHash: await hashPassword(dto.temporaryPassword),
+            mustChangePassword: true,
+          },
+          select: USER_PUBLIC,
+        });
+        await this.audit.record(
+          actor,
+          {
+            companyId,
+            action: 'USER_CREATED',
+            entity: 'User',
+            entityId: created.id,
+            after: {
+              name: created.name,
+              email: created.email,
+              role: created.role,
+            },
+          },
+          tx,
+        );
+        return created;
       });
       this.logger.info('UsersService', 'USER_CREATED', 'Vendedor creado', {
         companyId,
@@ -72,14 +94,29 @@ export class UsersService {
     id: string,
     dto: UpdateSellerDto,
     companyId: string,
-    actorId: string,
+    actor: AuthUser,
   ) {
-    await this.findSeller(id, companyId, actorId);
+    const actorId = actor.userId;
+    const current = await this.findSeller(id, companyId, actorId);
     try {
-      const user = await this.prisma.user.update({
-        where: { id },
-        data: dto,
-        select: USER_PUBLIC,
+      const user = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: { id },
+          data: dto,
+          select: USER_PUBLIC,
+        });
+        await this.audit.record(
+          actor,
+          {
+            companyId,
+            action: 'USER_UPDATED',
+            entity: 'User',
+            entityId: id,
+            ...changedFields(current, { ...dto }),
+          },
+          tx,
+        );
+        return updated;
       });
       this.logger.info('UsersService', 'USER_UPDATED', 'Vendedor actualizado', {
         companyId,
@@ -99,13 +136,29 @@ export class UsersService {
     id: string,
     active: boolean,
     companyId: string,
-    actorId: string,
+    actor: AuthUser,
   ) {
-    await this.findSeller(id, companyId, actorId);
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: { active },
-      select: USER_PUBLIC,
+    const actorId = actor.userId;
+    const current = await this.findSeller(id, companyId, actorId);
+    const user = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data: { active },
+        select: USER_PUBLIC,
+      });
+      await this.audit.record(
+        actor,
+        {
+          companyId,
+          action: active ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+          entity: 'User',
+          entityId: id,
+          before: { active: current.active },
+          after: { active },
+        },
+        tx,
+      );
+      return updated;
     });
     // La sesión abierta del vendedor deja de valer de inmediato.
     this.cache.invalidate(id);
@@ -122,7 +175,14 @@ export class UsersService {
   private async findSeller(id: string, companyId: string, actorId: string) {
     const found = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true, companyId: true },
+      select: {
+        id: true,
+        role: true,
+        companyId: true,
+        name: true,
+        email: true,
+        active: true,
+      },
     });
     const user = assertSameCompany(
       found && found.companyId

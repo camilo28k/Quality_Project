@@ -61,3 +61,20 @@ Requisitos: SWR-TEN-001, SWR-TEN-002, SWR-TEN-003, SWR-ROLE-001, SWR-ROLE-002 (e
 - La venta sigue haciendo 2 idas y vueltas a la BD; la prueba de caja blanca del camino D lo verifica.
 - La mediana de la venta (1748 ms) equivale a unas 2,2 veces la ida y vuelta medida hoy (801 ms), frente a los ~580 ms medidos cuando se cerró FAL-01.
 - La degradación es consistente con una red o un pooler más lentos ese día, no con consultas adicionales. Aun así, **no se puede afirmar que FAL-01 se cumpla hoy contra Supabase**: queda como observación abierta (OBS-MT-01) hasta repetir la medición en otro momento o con la BD en una región más cercana.
+
+### Segunda medición, con el código de `main` (2026-11-26, tarde)
+La primera re-medición programada no fue válida: compiló código de la parte 3 sin su migración en Supabase y las ventas respondieron 400. Se repitió con un checkout limpio de `main`.
+
+**Corrección de criterio.** Las corridas «concurrentes» anteriores usaban los mismos 2 productos en las 20 ventas. Ese es el riesgo residual que ya estaba documentado al cerrar FAL-01: las ventas del mismo producto esperan en cola. El cierre de FAL-01 (60/60) se midió en modo «distintos», con un producto por venta, así que solo ese modo es comparable.
+
+| Prueba (Supabase, código de `main`) | Resultado | Al cerrar FAL-01 |
+|---|---|---|
+| Ida y vuelta `SELECT 1` | mediana 579 ms y luego 679 ms | ~580 ms |
+| 40 ventas secuenciales | 36/40 y 39/40 ≤ 2 s (p95 2126 / 1681 ms) | 40/40 |
+| 20 concurrentes, productos distintos, 3 corridas | 20/20 · 20/20 · 10/20 | 20/20 · 20/20 · 20/20 |
+| 20 concurrentes, mismos 2 productos | 7/20 y 1/20 | (riesgo residual documentado) |
+
+**Conclusión honesta.**
+- El comportamiento es el mismo que cuando se cerró FAL-01 en 2 de 3 corridas concurrentes y en la mayoría de las secuenciales.
+- La tercera corrida concurrente fue unos 700 ms más lenta en todas sus ventas, lo que apunta a la red o al pooler.
+- **OBS-MT-01 queda abierta**: no se puede afirmar un cumplimiento estable del 95 % contra Supabase. La mitigación de fondo es fuera del código: una región de BD más cercana o un despliegue en la misma región.

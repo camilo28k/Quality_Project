@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AuditService, changedFields } from '../audit/audit.service';
+import type { AuthUser } from '../auth/decorators';
 import { UserStatusCache } from '../auth/user-status-cache';
 import { AppLogger } from '../common/logger/app-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,6 +39,7 @@ export class CompanyService {
     private readonly prisma: PrismaService,
     private readonly logger: AppLogger,
     private readonly cache: UserStatusCache,
+    private readonly audit: AuditService,
   ) {}
 
   async get(companyId: string) {
@@ -51,24 +54,40 @@ export class CompanyService {
   async completeOnboarding(
     companyId: string,
     dto: CompleteOnboardingDto,
-    actorId: string,
+    actor: AuthUser,
   ) {
+    const actorId = actor.userId;
     const current = await this.get(companyId);
     if (current.onboardingCompleted)
       throw new ConflictException(
         'La configuración inicial ya fue completada; edite los datos desde Configuración',
       );
     const { firstInvoiceNumber, ...profile } = dto;
-    const company = await this.prisma.company.update({
-      where: { id: companyId },
-      data: {
-        ...profile,
-        nextInvoiceNumber: firstInvoiceNumber,
-        onboardingCompleted: true,
-        emailVerifiedAt:
-          dto.email === current.email ? current.emailVerifiedAt : null,
-      },
-      select: COMPANY_PROFILE,
+    const data = {
+      ...profile,
+      nextInvoiceNumber: firstInvoiceNumber,
+      onboardingCompleted: true,
+      emailVerifiedAt:
+        dto.email === current.email ? current.emailVerifiedAt : null,
+    };
+    const company = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data,
+        select: COMPANY_PROFILE,
+      });
+      await this.audit.record(
+        actor,
+        {
+          companyId,
+          action: 'COMPANY_ONBOARDING_COMPLETED',
+          entity: 'Company',
+          entityId: companyId,
+          ...changedFields(current, data),
+        },
+        tx,
+      );
+      return updated;
     });
     // Los usuarios de la empresa dejan de estar bloqueados de inmediato.
     this.cache.invalidateCompany(companyId);
@@ -84,15 +103,31 @@ export class CompanyService {
   async update(
     companyId: string,
     dto: UpdateCompanyProfileDto,
-    actorId: string,
+    actor: AuthUser,
   ) {
+    const actorId = actor.userId;
     const current = await this.get(companyId);
     const emailChanged = dto.email !== undefined && dto.email !== current.email;
-    const company = await this.prisma.company.update({
-      where: { id: companyId },
-      // Un correo nuevo debe volver a verificarse antes de usarse en facturas (SWR-MAIL-001).
-      data: { ...dto, ...(emailChanged ? { emailVerifiedAt: null } : {}) },
-      select: COMPANY_PROFILE,
+    // Un correo nuevo debe volver a verificarse antes de usarse en facturas (SWR-MAIL-001).
+    const data = { ...dto, ...(emailChanged ? { emailVerifiedAt: null } : {}) };
+    const company = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.company.update({
+        where: { id: companyId },
+        data,
+        select: COMPANY_PROFILE,
+      });
+      await this.audit.record(
+        actor,
+        {
+          companyId,
+          action: 'COMPANY_UPDATED',
+          entity: 'Company',
+          entityId: companyId,
+          ...changedFields(current, data),
+        },
+        tx,
+      );
+      return updated;
     });
     this.logger.info(
       'CompanyService',
