@@ -32,6 +32,9 @@ describe('AuthService.login (SWR-AUTH-001, SWR-AUTH-002)', () => {
     role: 'ADMIN',
     active: true,
     passwordHash,
+    companyId: 'co1',
+    mustChangePassword: false,
+    company: { active: true },
   });
 
   it('devuelve token y datos públicos con credenciales válidas de cuenta activa', async () => {
@@ -46,6 +49,8 @@ describe('AuthService.login (SWR-AUTH-001, SWR-AUTH-002)', () => {
       name: 'Admin',
       email: 'admin@tienda.test',
       role: 'ADMIN',
+      companyId: 'co1',
+      mustChangePassword: false,
     });
     expect(result.user).not.toHaveProperty('passwordHash');
     expect(logger.info).toHaveBeenCalledWith(
@@ -75,6 +80,30 @@ describe('AuthService.login (SWR-AUTH-001, SWR-AUTH-002)', () => {
     await expect(
       service.login('admin@tienda.test', 'Clave-Correcta-1'),
     ).rejects.toThrow(INVALID_CREDENTIALS);
+  });
+
+  it('SWR-TEN-003: rechaza el inicio de sesión si la empresa está desactivada', async () => {
+    findUnique.mockResolvedValue({
+      ...activeUser(),
+      company: { active: false },
+    });
+    await expect(
+      service.login('admin@tienda.test', 'Clave-Correcta-1'),
+    ).rejects.toThrow(INVALID_CREDENTIALS);
+    expect(JSON.stringify(logger.warn.mock.calls)).toContain(
+      'COMPANY_INACTIVE',
+    );
+  });
+
+  it('el SUPER_ADMIN no tiene empresa y puede iniciar sesión', async () => {
+    findUnique.mockResolvedValue({
+      ...activeUser(),
+      role: 'SUPER_ADMIN',
+      companyId: null,
+      company: null,
+    });
+    const result = await service.login('admin@tienda.test', 'Clave-Correcta-1');
+    expect(result.user).toMatchObject({ role: 'SUPER_ADMIN', companyId: null });
   });
 
   it('registra el fallo sin incluir la contraseña en los logs', async () => {
