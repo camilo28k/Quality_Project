@@ -52,14 +52,19 @@ export const ACTION_LABEL: Record<string, string> = {
   PRICE_CHANGE_REQUESTED: 'Precio propuesto',
   PRICE_CHANGE_REJECTED: 'Precio propuesto rechazado',
   STOCK_ENTRY: 'Entrada de stock',
-  STOCK_ADJUSTMENT_OUT: 'Baja de stock'
+  STOCK_ADJUSTMENT_OUT: 'Baja de stock',
+  SALE_VOIDED: 'Venta anulada',
+  SALE_REISSUED: 'Venta reemitida',
+  SALE_CORRECTION_REQUESTED: 'Corrección de venta pedida',
+  SALE_CORRECTION_REJECTED: 'Corrección de venta rechazada'
 };
 
 const ENTITY_LABEL: Record<string, string> = {
   Company: 'Empresa',
   User: 'Usuario',
   Category: 'Categoría',
-  Product: 'Producto'
+  Product: 'Producto',
+  Sale: 'Venta'
 };
 
 /** Resume antes → después en una línea legible. */
