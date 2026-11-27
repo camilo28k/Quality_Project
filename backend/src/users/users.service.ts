@@ -12,6 +12,7 @@ import { isUniqueViolation } from '../platform/platform.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertSameCompany } from '../tenancy/tenant';
 import { CreateSellerDto, UpdateSellerDto } from './users.dto';
+import { resetPassword } from './reset-password';
 
 const USER_PUBLIC = {
   id: true,
@@ -169,6 +170,33 @@ export class UsersService {
       { companyId, targetUserId: id, userId: actorId },
     );
     return user;
+  }
+
+  /** El ADMIN restablece la contraseña de un vendedor que la olvidó (queda temporal). */
+  async resetSellerPassword(
+    id: string,
+    temporaryPassword: string,
+    companyId: string,
+    actor: AuthUser,
+  ) {
+    await this.findSeller(id, companyId, actor.userId);
+    await resetPassword(this.prisma, this.audit, this.cache, {
+      userId: id,
+      companyId,
+      temporaryPassword,
+      actor,
+    });
+    this.logger.info(
+      'UsersService',
+      'USER_PASSWORD_RESET',
+      'Contraseña restablecida',
+      {
+        companyId,
+        targetUserId: id,
+        userId: actor.userId,
+      },
+    );
+    return { reset: true };
   }
 
   /** Solo vendedores de la propia empresa: un ADMIN no se edita aquí. */

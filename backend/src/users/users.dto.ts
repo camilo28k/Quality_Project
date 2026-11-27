@@ -44,3 +44,10 @@ export class UpdateSellerDto {
   @IsEmail({}, { message: 'El correo no tiene un formato válido' })
   email?: string;
 }
+
+/** Restablece la contraseña con una temporal: el usuario deberá cambiarla al entrar. */
+export class ResetPasswordDto {
+  @IsString()
+  @Matches(PASSWORD_RULE, { message: PASSWORD_MESSAGE })
+  temporaryPassword!: string;
+}

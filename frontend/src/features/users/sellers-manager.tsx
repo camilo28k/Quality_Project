@@ -86,6 +86,25 @@ export function SellersManager() {
     }
   }
 
+  /** El vendedor olvidó su contraseña: el ADMIN le asigna una temporal que deberá cambiar. */
+  async function resetPassword(u: CompanyUser) {
+    const temporaryPassword = window.prompt(
+      `Contraseña temporal para ${u.name} (${PASSWORD_HINT.toLowerCase()} Deberá cambiarla al entrar):`
+    );
+    if (temporaryPassword === null) return;
+    if (!PASSWORD_RULE.test(temporaryPassword)) {
+      toast.error(`La contraseña temporal no cumple: ${PASSWORD_HINT.toLowerCase()}`);
+      return;
+    }
+    try {
+      await apiFetch(api(`users/${u.id}/reset-password`), { method: 'POST', body: { temporaryPassword } });
+      toast.success(`Contraseña de ${u.name} restablecida. Entrégale la temporal.`);
+      await reload();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'No se pudo restablecer la contraseña');
+    }
+  }
+
   const field = (key: Key, label: string, type: string, hint?: string) => (
     <Field data-invalid={!!errors[key]}>
       <FieldLabel htmlFor={`seller-${key}`}>{label}</FieldLabel>
@@ -172,6 +191,9 @@ export function SellersManager() {
                       <>
                         <Button variant='outline' size='sm' onClick={() => setEditing(u)}>
                           Editar
+                        </Button>
+                        <Button variant='outline' size='sm' onClick={() => resetPassword(u)}>
+                          Restablecer contraseña
                         </Button>
                         {u.active ? (
                           <AlertDialog>
