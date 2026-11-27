@@ -8,6 +8,7 @@ import { formatCOP, formatDateTime, formatQty } from '@/lib/format';
 import { PAYMENT_LABEL, UNIT_LABEL, type Sale } from '@/lib/types';
 import { useApiData } from '@/lib/use-api-data';
 import Link from 'next/link';
+import { InvoiceEmail } from './invoice-email';
 
 interface Invoice {
   sale: Sale;
@@ -117,6 +118,7 @@ export function InvoiceView({ id }: { id: string }) {
         </table>
         {c.invoiceFooter && <p className='text-muted-foreground text-center text-xs'>{c.invoiceFooter}</p>}
       </article>
+      <InvoiceEmail saleId={sale.id} customerEmail={sale.customerEmail} />
     </div>
   );
 }

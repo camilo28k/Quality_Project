@@ -17,6 +17,7 @@ import {
   ReasonDto,
   ReissueSaleDto,
   ResolveCorrectionDto,
+  SendInvoiceDto,
 } from './sales.dto';
 import { SalesService } from './sales.service';
 
@@ -62,6 +63,28 @@ export class SalesController {
     @CompanyId() companyId: string,
   ) {
     return this.sales.invoice(id, user, companyId);
+  }
+
+  /** SWR-MAIL-002: reintentar el envío o enviar a otro correo. */
+  @Roles('ADMIN', 'SELLER', 'SUPER_ADMIN')
+  @Post('sales/:id/send-invoice')
+  @HttpCode(200)
+  sendInvoice(
+    @Param('id', ID) id: string,
+    @Body() dto: SendInvoiceDto,
+    @CurrentUser() user: AuthUser,
+    @CompanyId() companyId: string,
+  ) {
+    return this.sales.sendInvoice(id, dto.to, user, companyId);
+  }
+
+  @Get('sales/:id/emails')
+  emails(
+    @Param('id', ID) id: string,
+    @CurrentUser() user: AuthUser,
+    @CompanyId() companyId: string,
+  ) {
+    return this.sales.emails(id, user, companyId);
   }
 
   /** SWR-SALE-V01: solo el ADMIN anula. */
