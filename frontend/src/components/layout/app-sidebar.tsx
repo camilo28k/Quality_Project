@@ -48,7 +48,7 @@ export default function AppSidebar({ user }: { user: SessionUser }) {
       </SidebarHeader>
       <SidebarContent className='overflow-x-hidden'>
         <SidebarGroup>
-          <SidebarGroupLabel>Operación</SidebarGroupLabel>
+          <SidebarGroupLabel>{user.role === 'SUPER_ADMIN' ? 'Plataforma' : 'Operación'}</SidebarGroupLabel>
           <SidebarMenu>
             {navForRole(user.role).map((item) => (
               <SidebarMenuItem key={item.url}>

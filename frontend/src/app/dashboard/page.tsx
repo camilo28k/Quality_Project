@@ -12,7 +12,12 @@ export default async function DashboardPage() {
     '/dashboard/ventas/nueva': 'Registrar una venta y descontar inventario',
     '/dashboard/ventas': 'Consultar las ventas confirmadas',
     '/dashboard/productos': 'Catálogo, precios y existencias',
-    '/dashboard/categorias': 'Clasificación de productos'
+    '/dashboard/categorias': 'Clasificación de productos',
+    '/dashboard/empresas': 'Emprendimientos, administradores y estado',
+    '/dashboard/auditoria': 'Quién hizo qué, en todas las empresas',
+    '/dashboard/revision': 'Productos y precios propuestos por vendedores',
+    '/dashboard/vendedores': 'Cuentas de quienes venden',
+    '/dashboard/configuracion': 'Datos de la empresa y de la factura'
   };
   return (
     <PageContainer pageTitle={`Hola, ${user.name}`} pageDescription='¿Qué quieres hacer hoy?'>
