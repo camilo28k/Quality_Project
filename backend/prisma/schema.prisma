@@ -226,6 +226,7 @@ model Sale {
   correctsSale       Sale?                   @relation("Reissue", fields: [correctsSaleId], references: [id], onDelete: Restrict)
   reissuedAs         Sale?                   @relation("Reissue")
   correctionRequests SaleCorrectionRequest[]
+  emails             InvoiceEmail[]
 
   @@unique([companyId, idempotencyKey])
   @@unique([companyId, invoiceNumber])
@@ -262,4 +263,47 @@ model SaleItem {
 
   sale    Sale    @relation(fields: [saleId], references: [id])
   product Product @relation(fields: [productId], references: [id])
+}
+
+enum EmailKind {
+  INVOICE
+  VOID_NOTICE
+  REISSUE
+}
+
+enum EmailStatus {
+  SENT
+  FAILED
+}
+
+/// SWR-MAIL-001: código de un solo uso para verificar el correo de la empresa
+model EmailVerification {
+  id        String    @id @default(uuid())
+  companyId String
+  email     String
+  /// SHA-256 del código; el código nunca se guarda en claro
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([companyId, createdAt])
+}
+
+/// SWR-MAIL-002: cada envío (o intento fallido) de una factura queda registrado
+model InvoiceEmail {
+  id        String      @id @default(uuid())
+  companyId String
+  saleId    String
+  to        String
+  kind      EmailKind
+  status    EmailStatus
+  error     String?
+  messageId String?
+  createdAt DateTime    @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@index([saleId, createdAt])
 }

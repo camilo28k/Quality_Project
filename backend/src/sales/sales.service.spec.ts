@@ -1,4 +1,13 @@
 import { AuditService } from '../audit/audit.service';
+import { InvoiceMailerService } from './invoice-mailer.service';
+
+/** El correo se prueba aparte; aquí no envía nada. */
+const mailerMock = () => ({
+  queue: jest.fn(),
+  lastDeliveredTo: jest.fn().mockResolvedValue(null),
+  send: jest.fn(),
+  history: jest.fn(),
+});
 import {
   BadRequestException,
   ConflictException,
@@ -57,6 +66,7 @@ describe('SalesService.confirm — caja blanca', () => {
       prisma,
       logger as unknown as AppLogger,
       { record: jest.fn() } as unknown as AuditService,
+      mailerMock() as unknown as InvoiceMailerService,
     );
   });
 
@@ -225,6 +235,7 @@ describe('SalesService — lectura por empresa y vendedor', () => {
       { sale: { findUnique, findMany } } as unknown as PrismaService,
       logger as unknown as AppLogger,
       { record: jest.fn() } as unknown as AuditService,
+      mailerMock() as unknown as InvoiceMailerService,
     );
   });
 
