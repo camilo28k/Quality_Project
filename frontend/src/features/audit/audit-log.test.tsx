@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, test, vi } from 'vitest';
 import { mockFetch } from '@/test/mock-fetch';
 import { AuditLogView, describeChange } from './audit-log';
 
@@ -40,5 +41,28 @@ describe('Auditoría (SWR-AUD-001)', () => {
     expect(screen.getByText('Empaque roto')).toBeVisible();
     expect(screen.getByText(/stock: 10 → 8/)).toBeVisible();
     expect(screen.queryByRole('button', { name: /cargar más/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('Auditoría global (SUPER_ADMIN)', () => {
+  test('RTL-MT-32: muestra la columna Empresa y filtra por empresa', async () => {
+    const fetchMock = mockFetch({
+      'GET /api/backend/audit': () => ({
+        body: {
+          items: [
+            { id: 'a1', action: 'COMPANY_CREATED', entity: 'Company', entityId: 'co1', before: null, after: { tradeName: 'Doña Rosa' }, reason: null, role: 'SUPER_ADMIN', userName: 'Super', companyId: 'co1', createdAt: '2026-11-27T10:00:00Z' }
+          ],
+          nextCursor: null
+        }
+      }),
+      'GET /api/backend/audit?companyId=co1': () => ({ body: { items: [], nextCursor: null } })
+    });
+    render(<AuditLogView companies={[{ id: 'co1', tradeName: 'Doña Rosa' }]} />);
+    expect(await screen.findByRole('columnheader', { name: 'Empresa' })).toBeVisible();
+    expect(screen.getByRole('cell', { name: 'Doña Rosa' })).toBeVisible();
+    await userEvent.selectOptions(screen.getByLabelText(/^empresa$/i), 'co1');
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('audit?companyId=co1'))).toBe(true)
+    );
   });
 });

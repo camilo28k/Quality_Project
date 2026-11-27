@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService, changedFields } from '../audit/audit.service';
 import type { AuthUser } from '../auth/decorators';
 import { hashPassword } from '../auth/password.util';
+import { resetPassword } from '../users/reset-password';
 import { UserStatusCache } from '../auth/user-status-cache';
 import { AppLogger } from '../common/logger/app-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -69,6 +70,53 @@ export class PlatformService {
     });
     if (!company) throw new NotFoundException('Empresa no encontrada');
     return company;
+  }
+
+  /** Detalle para el panel: empresa, usuarios y ventas confirmadas (cantidad y total). */
+  async getCompanyDetail(id: string) {
+    const company = await this.getCompany(id);
+    const sales = await this.prisma.sale.aggregate({
+      where: { companyId: id, status: 'CONFIRMED' },
+      _count: true,
+      _sum: { total: true },
+    });
+    return {
+      ...company,
+      stats: {
+        confirmedSales: sales._count,
+        salesTotal: sales._sum.total ?? 0,
+      },
+    };
+  }
+
+  /** Soporte: restablece la contraseña de un usuario de una empresa (no de otro SUPER_ADMIN). */
+  async resetUserPassword(
+    userId: string,
+    temporaryPassword: string,
+    actor: AuthUser,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, companyId: true },
+    });
+    if (!user?.companyId) throw new NotFoundException('Usuario no encontrado');
+    await resetPassword(this.prisma, this.audit, this.cache, {
+      userId,
+      companyId: user.companyId,
+      temporaryPassword,
+      actor,
+    });
+    this.logger.info(
+      'PlatformService',
+      'USER_PASSWORD_RESET',
+      'Contraseña restablecida',
+      {
+        companyId: user.companyId,
+        targetUserId: userId,
+        userId: actor.userId,
+      },
+    );
+    return { reset: true };
   }
 
   async createCompany(dto: CreateCompanyDto, actor: AuthUser) {
