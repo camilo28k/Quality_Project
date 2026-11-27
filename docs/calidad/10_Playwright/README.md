@@ -21,6 +21,7 @@ Playwright levanta `next start` en el puerto 3002 y lee las cuentas de prueba de
 | E2E-05 | Vendedor: login → venta de 0,75 kg por transferencia → historial | SWR-MED-002, SWR-PAY-001, SWR-SALE-008 | **Sí** |
 | E2E-06 | Stock insuficiente: rechazo y stock sin cambios | SWR-SALE-007, TC-SALE-002 | |
 | E2E-07 | Re-test H-FE-01: a 1280 px la tabla de productos no se desborda | Hallazgo H-FE-01 | |
+| E2E-08 | Multiempresa: SUPER_ADMIN crea empresa → ADMIN primer ingreso → categoría y vendedor → vendedor propone producto → ADMIN aprueba → venta → ADMIN anula E2E-1, stock vuelve a 10 → otra empresa no lo ve | SWR-ROLE-*, SWR-ONB-*, SWR-TEN-001, SWR-INV-001, SWR-SALE-010 | **Sí** |
 
 ## Resultado final (2026-11-11)
 
@@ -65,3 +66,12 @@ Playwright levanta `next start` en el puerto 3002 y lee las cuentas de prueba de
 | `expect` | El aviso indica Transferencia; la opción del producto muestra «disp. 1,25» (2 − 0,75); en Ventas la fila contiene «0,75 kg», «Transferencia» y «Vendedor» |
 | Auto-waiting | `toContainText` espera hasta 30 s a que la lista de ventas cargue (la BD remota es lenta, H-API-02) |
 | Datos | El producto se crea con nombre único en cada ejecución; la prueba no depende de E2E-04 |
+
+## Extensión multiempresa (2026-11-27)
+
+**8 de 8 PASS en 56 s**, contra el backend con la BD PostgreSQL local de pruebas (no Supabase). E2E-08 necesita `SEED_SUPERADMIN_EMAIL` y `SEED_SUPERADMIN_PASSWORD`; si faltan, la prueba se omite.
+
+| Intento | Resultado | Causa | Clasificación | Corrección |
+|---|---|---|---|---|
+| 1 (solo E2E-08) | FAIL en el paso 6 | La venta sí se confirmó (la captura muestra «Venta confirmada · Factura E2E-1»), pero la prueba buscaba el texto exacto «Venta confirmada». E2E-04 tenía el mismo selector desactualizado desde la parte 4 | Defecto en las pruebas (DEF-MT-04) | Selector con el número de factura |
+| 2 (suite completa) | 8 PASS | — | — | — |

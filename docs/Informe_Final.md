@@ -6,7 +6,7 @@ Integrantes: Melanie Liset Sánchez Polanía; Harold Camilo Barrera Giraldo
 Docente: Cesar Augusto Tafur
 Fecha de entrega: 16/11/2026
 Repositorio: https://github.com/camilo28k/Quality_Project
-Fecha de corte de la evidencia: 16 de noviembre de 2026
+Fecha de corte de la evidencia: 16 de noviembre de 2026 (MVP) · 27 de noviembre de 2026 (extensión multiempresa, sección 11)
 
 ---
 
@@ -24,6 +24,8 @@ TiendApp es una plataforma web de inventario y ventas para un solo establecimien
 | E2E (Playwright) | 7 |
 
 Además, el CI en GitHub Actions corre lint, tipos, build, pruebas y umbrales de cobertura en cada push.
+
+**Extensión post-MVP (sección 11):** después de la entrega del MVP el producto pasó a ser **multiempresa**. Al 27/11/2026 las suites suman **183 pruebas Jest, 46 Vitest, 8 E2E y 124 verificaciones contra la API** en 4 scripts, todas en PASS. Los requisitos nuevos se identifican aparte y no reemplazan los IDs originales de la SRS.
 
 **Estado de la versión (sección 8):** el 15/11/2026 el equipo integró todo en `main`, siguiendo el flujo `develop` → `qa` → `main` con CI en verde. El 16/11/2026 se corrigió **FAL-01**: confirmar una venta pasó de 2,6–5,1 s a un p95 de 1,7 s secuencial y 1,8–2,0 s con 20 usuarios simultáneos (SWR-PERF-001 cumplido). Como versión de **producción** la recomendación sigue siendo **no liberar todavía**, por un hallazgo abierto de severidad alta:
 - **INC-03:** la contraseña de la base de datos quedó expuesta fuera del equipo (rotación pospuesta por el equipo).
@@ -182,6 +184,61 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 - [x] Completar el docente y la fecha de entrega en la portada (SRS C-10).
 - [ ] Preparar la sustentación: todos los integrantes deben poder explicar la trazabilidad, una prueba unitaria, un análisis de caja blanca, 3 pruebas RTL, una API de Postman, 2 pruebas E2E, un hallazgo con su característica ISO 25010 y los logs.
 
+## 11. Extensión multiempresa (post-MVP)
+
+Después del MVP se amplió el alcance. **Estos requisitos son una extensión posterior; los IDs originales de la SRS no cambian.** Diseño: `docs/calidad/15_Multiempresa/Diseno_Fase1.md`.
+
+**Qué se agregó:**
+- Roles **SUPER_ADMIN**, **ADMIN** por empresa y **SELLER**.
+- Datos aislados por empresa: el `companyId` sale del token y un acceso cruzado responde 404 y queda registrado.
+- **Primer ingreso:** cambio de contraseña obligatorio y asistente con NIT validado, correo y facturación.
+- **Catálogo:** el vendedor propone productos y precios, el ADMIN los aprueba. Categorías y bajas de stock solo las hace el ADMIN.
+- **Factura:** consecutivo por empresa sin huecos. Las ventas no se editan: el ADMIN las anula o reemite con motivo, y el stock vuelve al inventario.
+- **Correo:** las facturas salen a nombre de la empresa, con Reply-To al correo verificado.
+- **Auditoría** inmutable con antes y después, y panel del SUPER_ADMIN.
+
+| SWR nuevo | Requisito | Pruebas |
+|---|---|---|
+| SWR-TEN-001/002/003 | Aislamiento por empresa; empresa desactivada | MT-API-01 (32), E2E-08 |
+| SWR-ROLE-001/002/003 | Roles y permisos | MT-API-01, MT-API-02, E2E-08 |
+| SWR-ONB-001/002 | Primer ingreso; NIT y correo | E2E-08, RTL |
+| SWR-STK-001, SWR-AUD-001 | Movimientos con motivo; auditoría inmutable | MT-API-02 (43) |
+| SWR-INV-001/002 | Consecutivo sin huecos; datos en la factura | MT-API-03 (26), E2E-08 |
+| SWR-MAIL-001/002 | Verificación del correo; envío de factura | MT-API-04 (23) |
+
+**Proceso:** se integró en 6 partes, cada una `feature` → `develop` → rama hija de `qa` con cherry-pick `-x` y re-pruebas → `main` (hasta el PR #59, más los de esta fase). Las migraciones se aplicaron en Supabase con autorización del equipo. Antes y después de cada migración se compararon los conteos y totales: fueron idénticos.
+
+**E2E-08 (Playwright):**
+1. El SUPER_ADMIN crea una empresa.
+2. El ADMIN cambia su contraseña temporal y completa el asistente.
+3. El ADMIN crea una categoría y un vendedor.
+4. El vendedor propone un producto y el ADMIN lo aprueba.
+5. El vendedor vende 4 unidades (factura E2E-1).
+6. El ADMIN anula la factura y el stock vuelve a 10.
+7. El ADMIN de otra empresa no ve el producto.
+
+Resultado del 27/11/2026: **8/8 PASS** contra la BD local de pruebas, nunca contra producción.
+
+**Hallazgos (registro 11):**
+
+| ID | Resumen | Estado |
+|---|---|---|
+| DEF-MT-01 | El vendedor recibía 403 al editar la descripción; tiene prueba de regresión. | Cerrado |
+| DEF-MT-02 / DEC-MT-01 | El consecutivo sin huecos serializa las ventas de una empresa (unas 7 simultáneas). El equipo eligió mantenerlo así por orden contable. | Limitación aceptada |
+| DEF-MT-03 | Scroll horizontal con el menú lateral abierto. | Cerrado |
+| DEF-MT-04 | Las pruebas E2E buscaban un texto que cambió con la factura. Era un defecto de las pruebas, no del producto. | Cerrado |
+| OBS-MT-01 | La latencia contra Supabase no cumple FAL-01 de forma estable. | Abierto |
+
+**Efecto en ISO 25010:**
+- La **seguridad operacional** pasa a CUMPLE, porque ya existe la anulación de ventas (el riesgo C-05 quedó resuelto).
+- La **seguridad** suma el aislamiento entre empresas y la auditoría.
+
+**Pendientes:**
+- Validación con el stakeholder.
+- INC-03.
+- OBS-MT-01.
+- 4 vulnerabilidades altas de `npm audit` en dependencias de Prisma, que ya estaban antes de esta extensión.
+
 ## Anexo: ubicación de los entregables
 
 | # | Entregable | Ubicación |
@@ -191,4 +248,5 @@ El detalle con acciones y mejoras está en `docs/calidad/12_ISO25010.xlsx`.
 | 3 | Repositorio y control de cambios | GitHub; flujo `feature` → `develop` → `qa` → `main` (PR #16–#28); `.github/workflows/ci.yml` |
 | 4 | Dossier de calidad | `docs/calidad/` (01–14, `CI_Quality_Gate.md`) |
 | 5 | Matriz maestra | `docs/calidad/Matriz_Maestra_Trazabilidad.xlsx` |
+| 6 | Extensión multiempresa | `docs/calidad/15_Multiempresa/`, `frontend/e2e/multiempresa.spec.ts`, `backend/scripts/*.mjs` |
 | 7 | Informe final | este documento (`docs/Informe_Final.pdf`) |
