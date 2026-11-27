@@ -74,3 +74,11 @@ export class ResolveCorrectionDto {
   @MaxLength(300, { message: 'La respuesta admite máximo 300 caracteres' })
   resolution?: string;
 }
+
+export class SendInvoiceDto {
+  /** Opcional: si no se indica, se usa el correo del cliente guardado en la venta. */
+  @IsOptional()
+  @Transform(trimLower)
+  @IsEmail({}, { message: 'El correo no tiene un formato válido' })
+  to?: string;
+}

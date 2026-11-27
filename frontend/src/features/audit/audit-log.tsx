@@ -33,6 +33,7 @@ export const ACTION_LABEL: Record<string, string> = {
   COMPANY_ACTIVATED: 'Empresa activada',
   COMPANY_DEACTIVATED: 'Empresa desactivada',
   COMPANY_ONBOARDING_COMPLETED: 'Configuración inicial completada',
+  COMPANY_EMAIL_VERIFIED: 'Correo de la empresa verificado',
   USER_CREATED: 'Usuario creado',
   USER_UPDATED: 'Usuario editado',
   USER_ACTIVATED: 'Usuario activado',

@@ -7,6 +7,7 @@ import { CompanyModule } from './company/company.module';
 import { SalesModule } from './sales/sales.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { HealthController } from './health.controller';
+import { MailModule } from './mail/mail.module';
 import { PlatformModule } from './platform/platform.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module';
     LoggerModule,
     PrismaModule,
     AuditModule,
+    MailModule,
     AuthModule,
     CatalogModule,
     SalesModule,

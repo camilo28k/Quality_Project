@@ -1,5 +1,8 @@
 # Levanta TiendApp con Docker. La base de datos sigue en Supabase (backend/.env).
 # Uso: docker compose up --build   ->  http://localhost:3000
+# Correo en desarrollo: Mailpit (bandeja en http://localhost:8025). En backend/.env:
+#   SMTP_HOST="mailpit"  SMTP_PORT=1025  MAIL_FROM_ADDRESS="facturas@tiendapp.test"
+# En producción se reemplaza por el SMTP real (credenciales solo en .env).
 services:
   backend:
     build: ./backend
@@ -20,4 +23,12 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  # Servidor de correo local para desarrollo y pruebas (no envía a Internet).
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "1025:1025"
+      - "8025:8025"
     restart: unless-stopped

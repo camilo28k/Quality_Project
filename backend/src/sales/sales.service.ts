@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, Sale, SaleItem } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { InvoiceMailerService } from './invoice-mailer.service';
 import { AppLogger } from '../common/logger/app-logger.service';
 import type { AuthUser } from '../auth/decorators';
 import { PrismaService } from '../prisma/prisma.service';
@@ -86,6 +87,7 @@ export class SalesService {
     private readonly prisma: PrismaService,
     private readonly logger: AppLogger,
     private readonly audit: AuditService,
+    private readonly mailer: InvoiceMailerService,
   ) {}
 
   /**
@@ -158,6 +160,8 @@ export class SalesService {
       paymentMethod: sale.paymentMethod,
       durationMs: Date.now() - started,
     });
+    // SWR-MAIL-002: la factura sale después de confirmar; un fallo no revierte la venta.
+    if (dto.customerEmail) this.mailer.queue(sale.id, 'INVOICE');
     return { replayed: false, sale: serializeSale(sale) };
   }
 
@@ -448,9 +452,12 @@ export class SalesService {
    */
   async void(id: string, reason: string, companyId: string, actor: AuthUser) {
     const sale = await this.loadSale(id, companyId, actor);
+    // Si el cliente recibió la factura, se le avisa de la anulación.
+    const notifyTo = await this.mailer.lastDeliveredTo(id);
     await this.prisma.$transaction((tx) =>
       this.voidInTx(tx, sale, reason, companyId, actor),
     );
+    if (notifyTo) this.mailer.queue(id, 'VOID_NOTICE', notifyTo);
     this.logger.info('SalesService', 'SALE_VOIDED', 'Venta anulada', {
       saleId: id,
       companyId,
@@ -546,6 +553,7 @@ export class SalesService {
       written.plan,
     );
     sale.correctsSaleId = original.id;
+    if (dto.customerEmail) this.mailer.queue(sale.id, 'REISSUE');
     this.logger.info('SalesService', 'SALE_REISSUED', 'Venta reemitida', {
       originalSaleId: id,
       saleId: sale.id,
@@ -646,5 +654,30 @@ export class SalesService {
     if (sale.status === 'VOIDED')
       throw new ConflictException('La venta ya está anulada');
     return sale;
+  }
+
+  /** Reenvío manual (reintento) o envío a otro correo. Respeta el acceso a la venta. */
+  async sendInvoice(
+    id: string,
+    to: string | undefined,
+    user: AuthUser,
+    companyId: string,
+  ) {
+    const sale = await this.findOne(id, user, companyId);
+    const kind =
+      sale.status === 'VOIDED'
+        ? 'VOID_NOTICE'
+        : sale.correctsSaleId
+          ? 'REISSUE'
+          : 'INVOICE';
+    const outcome = await this.mailer.send(id, kind, to);
+    if (outcome.status === 'SKIPPED')
+      throw new BadRequestException([outcome.reason]);
+    return outcome;
+  }
+
+  async emails(id: string, user: AuthUser, companyId: string) {
+    await this.findOne(id, user, companyId);
+    return this.mailer.history(id);
   }
 }
