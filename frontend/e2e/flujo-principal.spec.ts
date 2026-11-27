@@ -36,7 +36,7 @@ test.describe('Flujo principal', () => {
     await page.getByRole('button', { name: 'Agregar a la venta' }).click();
     await expect(page.getByTestId('sale-total')).toHaveText(/\$\s7\.500/);
     await page.getByRole('button', { name: 'Confirmar venta' }).click();
-    await expect(page.getByText('Venta confirmada', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Venta confirmada · Factura /)).toBeVisible();
 
     // 5. Resultado final: el inventario se descontó (TC-SALE-001)
     await goTo(page, 'Productos');
