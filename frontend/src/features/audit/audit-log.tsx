@@ -18,6 +18,7 @@ export interface AuditItem {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   reason: string | null;
+  companyId?: string | null;
   role: Role;
   userName: string | null;
   createdAt: string;
@@ -54,6 +55,7 @@ export const ACTION_LABEL: Record<string, string> = {
   PRICE_CHANGE_REJECTED: 'Precio propuesto rechazado',
   STOCK_ENTRY: 'Entrada de stock',
   STOCK_ADJUSTMENT_OUT: 'Baja de stock',
+  USER_PASSWORD_RESET: 'Contraseña restablecida',
   SALE_VOIDED: 'Venta anulada',
   SALE_REISSUED: 'Venta reemitida',
   SALE_CORRECTION_REQUESTED: 'Corrección de venta pedida',
@@ -87,13 +89,32 @@ export function describeChange(item: Pick<AuditItem, 'before' | 'after'>): strin
 }
 
 /** SWR-AUD-001: auditoría de la empresa, solo lectura, más recientes primero. */
-export function AuditLogView() {
+export function AuditLogView({
+  companyId,
+  companies
+}: {
+  /** SUPER_ADMIN: auditoría de una empresa concreta. */
+  companyId?: string;
+  /** SUPER_ADMIN, vista global: nombres de empresa para la columna y el filtro. */
+  companies?: { id: string; tradeName: string }[];
+} = {}) {
   const [entity, setEntity] = useState('');
-  const first = useApiData<Page>(api(`audit${entity ? `?entity=${entity}` : ''}`));
+  const [companyFilter, setCompanyFilter] = useState('');
+  const scope = companyId ?? companyFilter;
+  const query = (extra = '') => {
+    const p = new URLSearchParams();
+    if (entity) p.set('entity', entity);
+    if (scope) p.set('companyId', scope);
+    const s = p.toString();
+    return `audit${s || extra ? '?' : ''}${s}${s && extra ? '&' : ''}${extra}`;
+  };
+  const key = `${entity}|${scope}`;
+  const names = new Map((companies ?? []).map((c) => [c.id, c.tradeName]));
+  const first = useApiData<Page>(api(query()));
   const [more, setMore] = useState<{ key: string; items: AuditItem[]; cursor: string | null } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const extra = more?.key === entity ? more : null;
+  const extra = more?.key === key ? more : null;
   const items = [...(first.data?.items ?? []), ...(extra?.items ?? [])];
   const cursor = extra ? extra.cursor : (first.data?.nextCursor ?? null);
 
@@ -101,8 +122,8 @@ export function AuditLogView() {
     if (!cursor) return;
     setLoadingMore(true);
     try {
-      const page = await apiFetch<Page>(api(`audit?cursor=${cursor}${entity ? `&entity=${entity}` : ''}`));
-      setMore({ key: entity, items: [...(extra?.items ?? []), ...page.items], cursor: page.nextCursor });
+      const page = await apiFetch<Page>(api(query(`cursor=${cursor}`)));
+      setMore({ key, items: [...(extra?.items ?? []), ...page.items], cursor: page.nextCursor });
     } finally {
       setLoadingMore(false);
     }
@@ -122,6 +143,21 @@ export function AuditLogView() {
             </NativeSelectOption>
           ))}
         </NativeSelect>
+        {companies && (
+          <>
+            <label htmlFor='audit-company' className='text-sm'>
+              Empresa
+            </label>
+            <NativeSelect id='audit-company' value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)}>
+              <NativeSelectOption value=''>Todas</NativeSelectOption>
+              {companies.map((c) => (
+                <NativeSelectOption key={c.id} value={c.id}>
+                  {c.tradeName}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </>
+        )}
       </div>
       {first.loading && !first.data ? (
         <LoadingRows label='Cargando auditoría' />
@@ -135,6 +171,7 @@ export function AuditLogView() {
             <TableHeader>
               <TableRow>
                 <TableHead>Fecha</TableHead>
+                {companies && <TableHead>Empresa</TableHead>}
                 <TableHead>Quién</TableHead>
                 <TableHead>Acción</TableHead>
                 <TableHead>Cambio</TableHead>
@@ -145,6 +182,9 @@ export function AuditLogView() {
               {items.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell className='whitespace-nowrap'>{formatDateTime(a.createdAt)}</TableCell>
+                  {companies && (
+                    <TableCell>{a.companyId ? (names.get(a.companyId) ?? '—') : 'Plataforma'}</TableCell>
+                  )}
                   <TableCell>
                     {a.userName ?? '—'}
                     <span className='text-muted-foreground block text-xs'>{ROLE_LABEL[a.role]}</span>

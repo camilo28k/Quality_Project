@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -15,6 +16,7 @@ import {
   UpdateCompanyDto,
 } from './platform.dto';
 import { PlatformService } from './platform.service';
+import { ResetPasswordDto } from '../users/users.dto';
 
 /** Rutas de plataforma: solo el SUPER_ADMIN (diseño §4). */
 @Roles('SUPER_ADMIN')
@@ -29,7 +31,18 @@ export class PlatformController {
 
   @Get(':id')
   get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.platform.getCompany(id);
+    return this.platform.getCompanyDetail(id);
+  }
+
+  /** Soporte: contraseña temporal para un usuario de una empresa. */
+  @Post('users/:userId/reset-password')
+  @HttpCode(200)
+  resetPassword(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.platform.resetUserPassword(userId, dto.temporaryPassword, user);
   }
 
   @Post()
