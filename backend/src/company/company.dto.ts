@@ -137,3 +137,9 @@ export class CompleteOnboardingDto extends UpdateCompanyProfileDto {
   @Max(999_999_999)
   firstInvoiceNumber!: number;
 }
+
+export class VerifyEmailDto {
+  @Transform(trim)
+  @Matches(/^\d{6}$/, { message: 'El código tiene 6 dígitos' })
+  code!: string;
+}
