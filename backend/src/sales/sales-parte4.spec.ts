@@ -1,6 +1,15 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { InvoiceMailerService } from './invoice-mailer.service';
+
+/** El correo se prueba aparte; aquí no envía nada. */
+const mailerMock = () => ({
+  queue: jest.fn(),
+  lastDeliveredTo: jest.fn().mockResolvedValue(null),
+  send: jest.fn(),
+  history: jest.fn(),
+});
 import { AppLogger } from '../common/logger/app-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CorrectionsService } from './corrections.service';
@@ -61,6 +70,7 @@ describe('Parte 4: anulación, reemisión y factura (SWR-SALE-V01/V02, SWR-INV-0
       prisma as unknown as PrismaService,
       { info: jest.fn(), warn: jest.fn() } as unknown as AppLogger,
       audit as unknown as AuditService,
+      mailerMock() as unknown as InvoiceMailerService,
     );
   });
 

@@ -11,6 +11,7 @@ import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { CompanyField } from './company-field';
+import { EmailVerification } from './email-verification';
 import { companyFields, type CompanyFieldKey, type CompanyProfile } from './company-schema';
 
 type Editable = Exclude<CompanyFieldKey, 'firstInvoiceNumber'>;
@@ -34,7 +35,12 @@ export function CompanySettings() {
   if (loading && !data) return <LoadingRows label='Cargando empresa' />;
   if (error) return <LoadError message={error} onRetry={reload} />;
   if (!data) return null;
-  return <SettingsForm data={data} reload={reload} />;
+  return (
+    <div className='space-y-4'>
+      <EmailVerification email={data.email} verifiedAt={data.emailVerifiedAt} onVerified={reload} />
+      <SettingsForm key={`${data.email}-${data.emailVerifiedAt}`} data={data} reload={reload} />
+    </div>
+  );
 }
 
 function SettingsForm({ data, reload }: { data: CompanyProfile; reload: () => Promise<void> }) {

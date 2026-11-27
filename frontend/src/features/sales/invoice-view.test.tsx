@@ -20,6 +20,7 @@ const sale = {
 describe('InvoiceView (SWR-INV-002)', () => {
   test('RTL-MT-22: la factura muestra empresa, NIT, consecutivo, vendedor, detalle y el sello de anulada', async () => {
     mockFetch({
+      'GET /api/backend/sales/s1/emails': () => ({ body: [] }),
       'GET /api/backend/sales/s1/invoice': () => ({
         body: {
           sale,
