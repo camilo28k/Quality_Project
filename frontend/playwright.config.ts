@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
  */
 try {
   const env = readFileSync('../backend/.env', 'utf8');
-  for (const key of ['SEED_ADMIN_EMAIL', 'SEED_ADMIN_PASSWORD', 'SEED_SELLER_EMAIL', 'SEED_SELLER_PASSWORD']) {
+  for (const key of ['SEED_ADMIN_EMAIL', 'SEED_ADMIN_PASSWORD', 'SEED_SELLER_EMAIL', 'SEED_SELLER_PASSWORD', 'SEED_SUPERADMIN_EMAIL', 'SEED_SUPERADMIN_PASSWORD']) {
     const value = env.match(new RegExp(`^${key}="?([^"\\r\\n]*)`, 'm'))?.[1];
     if (value && !process.env[key]) process.env[key] = value;
   }
