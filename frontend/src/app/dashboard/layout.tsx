@@ -24,7 +24,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         Saltar al contenido
       </a>
       <AppSidebar user={user} />
-      <SidebarInset id='main-content' tabIndex={-1}>
+      {/* min-w-0: el contenido puede encogerse; las tablas anchas hacen scroll dentro de su contenedor, no la página. */}
+      <SidebarInset id='main-content' tabIndex={-1} className='min-w-0'>
         <Header />
         {children}
       </SidebarInset>
